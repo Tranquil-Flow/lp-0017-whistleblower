@@ -7638,8 +7638,14 @@ dependencies = [
 name = "whistleblower-batch"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
+ "clap",
  "document-indexing",
+ "tokio",
+ "wallet",
  "whistleblower-core",
+ "whistleblower-lez-adapter",
+ "whistleblower-mock-adapter",
 ]
 
 [[package]]

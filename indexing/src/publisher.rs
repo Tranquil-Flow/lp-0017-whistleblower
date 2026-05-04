@@ -7,11 +7,18 @@
 //!    - StorageClient.upload_file(path) -> CID
 //!    - Build canonical MetadataEnvelopeV1 from CID + inputs
 //!    - DeliveryClient.publish(content_topic, envelope_bytes) -> PublishReceipt
-//!    - Returns PublishOutcome (CID, envelope_hash, publish_receipt)
+//!    - Returns PublishOutcome (CID, metadata_hash, publish_receipt)
 //! 2. `Publisher::anchor_published(outcome)` (optional, called by either
 //!    the publisher or any altruistic third party): RegistryClient.anchor_one
 //!    against the LEZ program.
+//!
+//! Retryable adapter errors at each step are retried with exponential backoff
+//! (`RetryPolicy`); non-retryable errors propagate immediately. Subscriber-side
+//! dedup is the `DurableDedupeStore` orchestration helper, used by the batch
+//! anchor CLI rather than the Publisher itself — re-publishing is permissionless
+//! and the subscribers are responsible for filtering duplicates per spec line 53.
 
+use crate::retry::{with_retry, RetryPolicy};
 use crate::traits::{
     AdapterError, DeliveryClient, PublishReceipt, RegistryClient, StorageClient,
 };
@@ -24,11 +31,11 @@ use whistleblower_core::{
 
 #[derive(Debug, Error)]
 pub enum PublisherError {
-    #[error("storage upload failed: {0}")]
+    #[error("storage upload failed after retries: {0}")]
     Storage(AdapterError),
-    #[error("delivery publish failed: {0}")]
+    #[error("delivery publish failed after retries: {0}")]
     Delivery(AdapterError),
-    #[error("registry anchor failed: {0}")]
+    #[error("registry anchor failed after retries: {0}")]
     Registry(AdapterError),
     #[error("envelope construction failed: {0}")]
     Envelope(#[from] CoreError),
@@ -62,6 +69,7 @@ pub struct Publisher {
     registry: Arc<dyn RegistryClient>,
     /// Defaults to `DEFAULT_CONTENT_TOPIC`. Overridable for tests / private deployments.
     pub content_topic: String,
+    retry_policy: RetryPolicy,
 }
 
 impl Publisher {
@@ -75,11 +83,19 @@ impl Publisher {
             delivery,
             registry,
             content_topic: DEFAULT_CONTENT_TOPIC.to_string(),
+            retry_policy: RetryPolicy::default(),
         }
     }
 
     pub fn with_topic(mut self, topic: impl Into<String>) -> Self {
         self.content_topic = topic.into();
+        self
+    }
+
+    /// Override the retry policy. Defaults to 5 attempts, exponential backoff
+    /// 200ms..10s. Use `RetryPolicy::no_retry()` for tests that must fail-fast.
+    pub fn with_retry_policy(mut self, policy: RetryPolicy) -> Self {
+        self.retry_policy = policy;
         self
     }
 
@@ -89,11 +105,15 @@ impl Publisher {
         path: PathBuf,
         inputs: MetadataInputs,
     ) -> Result<PublishOutcome, PublisherError> {
-        let upload = self
-            .storage
-            .upload_file(path)
-            .await
-            .map_err(PublisherError::Storage)?;
+        let storage = self.storage.clone();
+        let path_for_retry = path.clone();
+        let upload = with_retry(self.retry_policy, move || {
+            let storage = storage.clone();
+            let path = path_for_retry.clone();
+            async move { storage.upload_file(path).await }
+        })
+        .await
+        .map_err(PublisherError::Storage)?;
 
         let cid = CanonicalCid::new(upload.cid.clone())
             .map_err(|_| PublisherError::InvalidCid(upload.cid))?;
@@ -111,11 +131,17 @@ impl Publisher {
         let envelope_bytes = envelope.canonical_json_bytes()?;
         let metadata_hash = envelope.metadata_hash()?;
 
-        let publish_receipt = self
-            .delivery
-            .publish(&self.content_topic, envelope_bytes.clone())
-            .await
-            .map_err(PublisherError::Delivery)?;
+        let delivery = self.delivery.clone();
+        let topic = self.content_topic.clone();
+        let bytes_for_retry = envelope_bytes.clone();
+        let publish_receipt = with_retry(self.retry_policy, move || {
+            let delivery = delivery.clone();
+            let topic = topic.clone();
+            let bytes = bytes_for_retry.clone();
+            async move { delivery.publish(&topic, bytes).await }
+        })
+        .await
+        .map_err(PublisherError::Delivery)?;
 
         Ok(PublishOutcome {
             cid,
@@ -133,10 +159,16 @@ impl Publisher {
         &self,
         outcome: &PublishOutcome,
     ) -> Result<AnchorEntry, PublisherError> {
-        self.registry
-            .anchor_one(outcome.cid.clone(), outcome.metadata_hash)
-            .await
-            .map_err(PublisherError::Registry)
+        let registry = self.registry.clone();
+        let cid = outcome.cid.clone();
+        let mh = outcome.metadata_hash;
+        with_retry(self.retry_policy, move || {
+            let registry = registry.clone();
+            let cid = cid.clone();
+            async move { registry.anchor_one(cid, mh).await }
+        })
+        .await
+        .map_err(PublisherError::Registry)
     }
 
     /// Convenience — full pipeline (upload + broadcast + anchor) in one call.
