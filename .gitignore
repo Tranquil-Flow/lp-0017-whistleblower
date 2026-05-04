@@ -11,3 +11,5 @@ Cargo.lock.bak
 /artifacts/
 ui/Cargo.lock
 /dist/
+# Local working docs that shouldn't ship in repo history
+PR_DRAFT.md

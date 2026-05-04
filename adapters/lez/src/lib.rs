@@ -181,7 +181,7 @@ impl RegistryClient for LezRegistryClient {
         let pda = self.entry_pda_for(&cid);
         let timestamp = self.next_timestamp();
         self.submit_and_wait(
-            vec![pda.clone()],
+            vec![pda],
             RegistryInstruction::AnchorOne {
                 cid: cid.clone(),
                 metadata_hash,

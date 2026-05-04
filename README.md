@@ -4,7 +4,7 @@ LP-0017 reference implementation: a censorship-resistant document upload + index
 
 Anyone can upload a document → its CID is broadcast over Logos Delivery → any altruistic third party (or the publisher themselves) can later batch-anchor accumulated CIDs to a LEZ program. The on-chain registry stores `(CID, metadata_hash, anchor_timestamp)` per document and is queryable by CID hash without a transaction.
 
-> **Status:** the registry program, the reusable indexing module, and the LEZ-side adapter are complete and exercised against a live local sequencer. The Logos Storage / Delivery integrations and the Basecamp UI plugin are deferred to Phase 1.7 (require nix + Qt). See `TASKS.md` "Status snapshot" for the per-task state.
+> **Status:** built end-to-end — registry program + indexing module + LEZ adapter exercised against a live local sequencer (50-CID batch validated, ~1.06ms/CID amortized), Qt6/QML Basecamp UI plugin built into a portable `.lgx` package via nix on the m4pro build host. **Remaining for submission:** test the `.lgx` in a real Basecamp instance, run devnet measurements with `RISC0_DEV_MODE=0`, record the demo video. See [`ui/README.md`](ui/README.md) "What's left" for the detailed punch list.
 
 ## Repository layout
 
@@ -28,12 +28,15 @@ whistleblower/
 ├── adapters/
 │   ├── mock/                 # in-memory adapters for unit tests
 │   └── lez/                  # real LEZ-backed RegistryClient (the on-chain side)
-├── batch/                    # `whistleblower-batch` CLI binary
+├── batch/                    # `whistleblower-batch` CLI binary (permissionless batch anchor tool)
+├── ui/                       # Qt6/QML Basecamp plugin (manifest + qml + src + ffi cdylib)
 ├── anchor_spike/             # standalone runner that proves Task 1.0B end-to-end
+├── flake.nix                 # workspace-root nix flake (.#ffi / .#plugin / .#lgx / .#install)
+├── dist/                     # built .lgx package (after `nix build .#lgx`)
 ├── whistleblower-registry-idl.json   # hand-written SPEL IDL for the registry
 ├── ARCHITECTURE.md           # design with locked decisions + risk table
 ├── REGISTRY_SPIKE.md         # Task 1.0B spike result + rerun instructions
-├── BENCHMARKS.md             # CU benchmarks (TBD)
+├── BENCHMARKS.md             # CU benchmarks — localnet captured, devnet TBD
 ├── DEPLOYMENT.md             # Local + devnet deployment commands
 ├── DEMO.md                   # End-to-end demo script for the submission video
 └── BUGS_FILED.md             # Upstream Logos issues filed during the build
@@ -81,11 +84,26 @@ NSSA_WALLET_HOME_DIR=$PWD/.scaffold/wallet \
   cargo test -p whistleblower-lez-adapter --release -- --ignored --nocapture
 ```
 
-Expected: 18 fast tests pass (5 adapter contract + 3 batch loop + 2 publisher e2e + 5 retry lib + 3 core), plus 2 live integration tests pass (~30s).
+Expected: 18 fast tests pass (5 adapter contract + 3 batch loop + 2 publisher e2e + 5 retry lib + 3 core), plus 2 live integration tests pass (~30s). The Rust FFI cdylib in `ui/ffi/` has 4 additional unit tests — run via `(cd ui/ffi && cargo test --release)`.
+
+## Build the Basecamp UI plugin
+
+The plugin is a Qt6/QML widget that loads inside Basecamp, exposes the file picker + metadata form + 4-stage publish progress UI, and bridges to Logos Storage / Delivery via `LogosAPIClient` and to the on-chain registry via the Rust FFI cdylib. Build via the workspace-root nix flake on a machine with the Logos toolchain installed:
+
+```bash
+nix build .#ffi      # Rust cdylib (~3-4 min)
+nix build .#plugin   # Qt6 plugin + standalone preview app
+nix build .#lgx      # portable .lgx package — the spec deliverable
+nix run  .#install   # copies plugin into Basecamp dev plugin dir
+```
+
+The `.lgx` file is the spec deliverable. Verified end-to-end on m4pro (aarch64-darwin) on 2026-05-04: `dist/whistleblower-plugin.lgx` (2.4MB). See [`ui/README.md`](ui/README.md) for the manual `cmake -B build` development workflow.
 
 ## Use the batch anchor CLI
 
-The CLI is the spec's "permissionless batch anchor tool" (line 33). Real Logos Delivery isn't wired yet (Phase 1.7), so the binary refuses to start without `--mock-delivery`:
+The CLI is the spec's "permissionless batch anchor tool" (line 33). It owns the on-chain side end-to-end: dedupe ledger, batching window, retry, idempotent anchor against the deployed program.
+
+The Storage / Delivery integration the CLI subscribes to is currently mocked behind `--mock-delivery`. The real Storage + Delivery integration ships in the Basecamp UI plugin (`ui/`, see [`ui/README.md`](ui/README.md)) — that plugin uses Logos Core's in-process `LogosAPIClient` to call the storage / delivery modules directly. A headless CLI equivalent would need either a Rust QtRemoteObjects client against the per-module `logos_host` process, or a Basecamp-plugin variant of this binary that reuses the same `LogosAPI` handle. Both options + tradeoffs are documented in [`adapters/logos/README.md`](adapters/logos/README.md). For now, the CLI runs in mock-delivery mode for development and CI:
 
 ```bash
 NSSA_WALLET_HOME_DIR=$PWD/.scaffold/wallet \
@@ -98,8 +116,6 @@ NSSA_WALLET_HOME_DIR=$PWD/.scaffold/wallet \
 ```
 
 Flags accept env vars too: `WL_TOPIC`, `WL_BATCH_SIZE`, `WL_BATCH_INTERVAL_SECS`, `WL_DEDUPE_PATH`, `WL_MOCK_DELIVERY`. SIGINT triggers a graceful flush.
-
-When real Delivery lands, the binary will subscribe to the actual topic and `--mock-delivery` will be removed.
 
 ## Inspect on-chain registry entries
 
@@ -126,21 +142,21 @@ See [`ARCHITECTURE.md`](ARCHITECTURE.md) for the design + the locked decisions:
 
 | Spec § | Requirement | Where |
 |---|---|---|
-| Functionality 1 | Upload to Logos Storage | `Publisher::publish_file` (real Storage adapter pending Phase 1.7) |
-| Functionality 2 | Broadcast envelope to Logos Delivery topic | Same — topic in `core::DEFAULT_CONTENT_TOPIC` |
-| Functionality 3 | Optional anchor on-chain | `Publisher::anchor_published` |
-| Functionality 4 | Batch anchor CLI tool | `whistleblower-batch` binary (`batch/`) |
+| Functionality 1 | Upload to Logos Storage | `ui/src/WhistleblowerBackend.cpp::uploadToStorage` via `LogosAPIClient::invokeRemoteMethodAsync("storage_module", "uploadUrl", ...)` |
+| Functionality 2 | Broadcast envelope to Logos Delivery topic | `ui/src/WhistleblowerBackend.cpp::broadcastEnvelope` via `LogosAPIClient::invokeRemoteMethodAsync("delivery_module", "send", ...)`; topic = `core::DEFAULT_CONTENT_TOPIC` |
+| Functionality 3 | Optional anchor on-chain | `Publisher::anchor_published` (Rust) + `whistleblower_anchor_one` FFI exposed to QML |
+| Functionality 4 | Batch anchor CLI tool | `whistleblower-batch` binary (`batch/`) — subscribes to topic, batches, anchors |
 | Functionality 4 idempotency | Re-submitting registered CID succeeds no-op | Built into `process_entry` in the guest; `LezRegistryClient` exercises it |
-| Functionality 5 | On-chain registry stores (CID, metadata_hash, anchor_timestamp) | `AnchorEntry` in `core/src/lib.rs`; one per PDA |
-| Functionality 6 | Document-indexing module reusable | `document-indexing` crate, no Qt dep |
-| Usability | LEZ program IDL via SPEL framework | `whistleblower-registry-idl.json` (hand-written) |
-| Usability | Basecamp app GUI | **Phase 1.7 — pending nix install** |
-| Reliability | Upload retries with backoff | `Publisher` wraps every adapter call in `with_retry` |
-| Reliability | Delivery dedup | `DurableDedupeStore` in `batch::run_batch_loop` |
-| Reliability | Batch tool resumes from last successfully anchored | Persistent dedupe ledger; registry idempotency |
-| Performance | CU benchmarks single + 50-CID batch | **TBD — `BENCHMARKS.md`** |
-| Supportability | Deployed on LEZ devnet/testnet | **TBD — currently localnet only** |
-| Supportability | E2E integration tests in CI with `RISC0_DEV_MODE=0` | Tests exist; **CI workflow TBD** |
+| Functionality 5 | On-chain registry stores (CID, metadata_hash, anchor_timestamp) | `AnchorEntry` in `core/src/lib.rs`; one PDA per CID |
+| Functionality 6 | Document-indexing module reusable | `document-indexing` crate, no Qt dep, public `Publisher` API |
+| Usability | LEZ program IDL via SPEL framework | `whistleblower-registry-idl.json` (hand-written; `spel inspect` reads it) |
+| Usability | Basecamp app GUI | `ui/` Qt6/QML plugin → `dist/whistleblower-plugin.lgx` (2.4MB darwin-arm64) |
+| Reliability | Upload retries with backoff | `Publisher` wraps every adapter call in `with_retry` (5 retries, exponential) |
+| Reliability | Delivery dedup | `DurableDedupeStore` in `batch::run_batch_loop` (sled-backed) |
+| Reliability | Batch tool resumes from last successfully anchored | Persistent dedupe ledger; registry idempotency means safe re-runs |
+| Performance | CU benchmarks single + 50-CID batch | `BENCHMARKS.md` — localnet captured (~1.06ms/CID at N=50); **devnet TBD** (awaiting RPC URL) |
+| Supportability | Deployed on LEZ devnet/testnet | **TBD — awaiting devnet RPC URL from Logos team**; `DEPLOYMENT.md` has commands ready |
+| Supportability | E2E integration tests in CI with `RISC0_DEV_MODE=0` | `.github/workflows/ci.yml` — workspace tests + ignored live-LEZ tests |
 
 ## License
 

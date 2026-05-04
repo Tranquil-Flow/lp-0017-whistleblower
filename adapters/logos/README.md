@@ -1,138 +1,92 @@
-# `whistleblower-logos-adapter` — bring-up plan
+# `whistleblower-logos-adapter` — design note (deferred)
 
-This crate is a **scaffold** for the real Logos Storage + Delivery adapters.
-It is not yet wired into the workspace `members` list (so the rest of the
-project compiles cleanly without it). The next session that takes this
-forward should follow the steps below.
+This crate is a **deliberate placeholder** for a future headless Rust adapter
+that talks to the Logos Storage / Delivery modules from outside the Basecamp
+UI process. It is intentionally not in the workspace `members` list — nothing
+in the project depends on it — and exists only to document the design space
+for whoever picks up the headless-CLI integration later.
 
-## Status — what's been validated (2026-05-04)
+The canonical real-Storage / real-Delivery integration ships in the
+[`ui/`](../../ui/) Basecamp plugin, which uses Logos Core's in-process
+`LogosAPIClient` to call the modules over QtRemoteObjects. That covers the
+spec's "Basecamp app" deliverable end-to-end. This scaffold only matters if
+you want a headless equivalent of `whistleblower-batch` that does its own
+upload + broadcast (today the batch CLI runs `--mock-delivery` and relies on
+the UI plugin to populate the topic).
 
-- ✅ Nix install works on the m4pro Tailscale host (`100.84.252.4`).
-- ✅ `nix build github:logos-co/logos-liblogos#portable` produces:
-  `bin/logos_host` and `bin/logos_host_qt` (the runtime hosts).
-  - The `default` and `logos-liblogos` outputs fail with a known
-    `gtest_discover_tests` 5-second-timeout issue (already filed upstream
-    as logos-basecamp#77 per memory). The `portable` output skips that
-    step and links cleanly.
-- 🟡 `nix build` of `logos-storage-module` and `logos-delivery-module`
-  in progress on m4pro at session end. Track via:
-  ```
-  ssh m4pro 'tail ~/logos-build/storage.log ~/logos-build/delivery.log'
-  ```
+## Runtime architecture
 
-## The runtime architecture (rediscovered)
-
-The storage module's `README.md` shows this pattern:
-
-```bash
-./logos/bin/logoscore -m ./modules --load-modules storage_module \
-  -c "storage_module.init(@config.json)" -c "storage_module.start()"
-```
-
-**That `logoscore` binary doesn't exist in the current `logos-liblogos`
-build outputs.** What we get is `logos_host` and `logos_host_qt`, with
-this CLI:
+`logos-co/logos-liblogos` builds two binaries:
 
 ```
-logos_host_qt --name <module> --path <module.dylib> [--instance-persistence-path <dir>]
+logos_host        # per-module runtime host (loads ONE .dylib in a process)
+logos_host_qt     # Qt-wrapped variant
 ```
 
-`logos_host` is **per-module** — it loads ONE module's `.dylib` in a
-dedicated process and keeps it alive. The IPC mechanism for invoking
-the module's `Q_INVOKABLE` methods is **QtRemoteObjects** (the build
-links against `qtremoteobjects-6.9.2`).
+They take a single module's `.dylib` and keep it alive. The IPC mechanism
+for invoking the module's `Q_INVOKABLE` methods is **QtRemoteObjects** — the
+build links against `qtremoteobjects-6.9.2`. There is no `logoscore` umbrella
+binary in the current build outputs, despite what the storage module README
+shows; that path was the older monolithic CLI shape.
 
-This is significantly more complex than the "subprocess + parse stderr"
-pattern this scaffold was originally designed around. Realistic
-integration options:
+The earlier scaffold here was designed around "subprocess + parse stderr,"
+which doesn't work against `logos_host` — its IPC is structured QtRO calls,
+not a CLI.
 
-### Option A: QRO client in Rust
+## Why this is hard, and the three options
 
-Build a Qt-Remote-Objects client in Rust to talk to the per-module
-`logos_host` process. Requires either `qmetaobject`/`cxx-qt` Rust crates
-plus matching Qt 6 dev libs OR hand-written QRO wire-format encoder.
+### Option A — QtRemoteObjects client in Rust
 
-- Pros: pure Rust, headless-CLI-friendly
-- Cons: significant Qt build complexity, fragile across Qt versions
+Build a QRO client in Rust to talk to the per-module `logos_host` process.
+Either `qmetaobject` / `cxx-qt` Rust crates plus matching Qt 6 dev libs, or
+hand-written QRO wire-format encoder.
 
-### Option B: Find or build a CLI client
+- **Pros:** pure Rust, headless-CLI-friendly, reuses the rest of the indexing
+  crate unchanged.
+- **Cons:** significant Qt build complexity, fragile across Qt minor versions,
+  the wire format is undocumented and tracks Qt internals.
 
-Check `logos-co/logos-logoscore-tui` (mentioned in memory as the TUI
-frontend for `logoscore-cli`). If `logoscore-cli` exists separately,
-shell out to it the way the storage README originally implied.
+### Option B — Restructure batch CLI as a Basecamp plugin component
 
-- Pros: matches the documented integration pattern
-- Cons: another binary to build + ship; depends on what state that
-  CLI is in
+Wrap the batch loop as a second Qt plugin that loads inside Basecamp and
+reuses the same `LogosAPI` handle the UI plugin gets. The CLI becomes a
+"start a background batch session" toggle in the UI rather than a separate
+binary.
 
-### Option C: Build the Basecamp UI plugin (Task 1.7 proper)
+- **Pros:** zero new IPC surface, reuses the working UI-plugin integration
+  verbatim, ships in the same `.lgx`.
+- **Cons:** loses the "permissionless, run anywhere" property the spec
+  envisions for the batch tool — operators must run Basecamp.
 
-The whisper-wall reference shows the canonical path: a Qt/QML plugin
-loads the modules via `LogosAPIClient` (the in-process Qt API), exposes
-a `.lgx` package for users to install in Basecamp. Rust gets called via
-a cdylib FFI for the indexing logic.
+### Option C — Wait for `logoscore-cli`
 
-- Pros: matches the spec exactly, what reviewers will look for
-- Cons: full UI work, biggest single deliverable in the LP-0017 scope
+Memory references a `logos-logoscore-tui` project as a TUI frontend for a
+hypothetical `logoscore-cli`. If that CLI ships separately, the original
+"subprocess" pattern becomes viable again.
 
-### Option D: Skip headless integration, use option C only
+- **Pros:** matches the documented integration pattern in the storage module
+  README.
+- **Cons:** depends on upstream work that may or may not land.
 
-Drop this `whistleblower-logos-adapter` crate entirely. Real adapter
-lives inside the Basecamp UI plugin (option C). The batch CLI either:
-- Stays mock-delivery-only with a clear "use Basecamp app to source the
-  CIDs" workflow note
-- Embeds a small QRO client (gets us back to option A complexity)
-- Calls a separate `logoscore-cli` if/when that lands (option B)
+## Decision (2026-05-04)
 
-## Recommended next-session path
+Defer. The UI plugin satisfies the spec's "Basecamp app" requirement and the
+batch CLI satisfies the spec's "permissionless batch anchor tool" requirement
+on the on-chain side. Headless real-Delivery for the CLI is not in the LP-0017
+deliverable list — the spec only requires that the indexing module be
+"reusable" (it is — all three adapter traits + their mock + lez impls are in
+[`indexing/`](../../indexing/)). A future PR can add option A or B once we
+have a clearer picture of what the upstream stack settles on.
 
-**Option C** (build the Basecamp UI plugin). The reasoning:
+## If you do pick this up
 
-1. The spec REQUIRES a Basecamp app GUI (LP-0017 §Usability). That work
-   has to happen anyway.
-2. The UI plugin's Rust FFI cdylib already integrates with our
-   document-indexing crate via the `Publisher` API — minimal new code.
-3. `whisper-wall/ui/` is a working reference that does exactly this:
-   `nix build ./ui#install` builds + installs the .lgx, `nix run ./ui#install`
-   runs it through a launch script.
-4. Defer the headless QRO client until we've shipped the UI and have
-   real users asking for CLI workflows.
+The crate compiles as an empty stub today. Add it to the workspace `members`
+list in [`../../Cargo.toml`](../../Cargo.toml), then implement
+`StorageClient` and `DeliveryClient` from `document-indexing::traits` against
+your chosen IPC mechanism. The contract tests in
+[`indexing/tests/adapter_contract.rs`](../../indexing/tests/adapter_contract.rs)
+will exercise the implementation against the same expectations the mock
+adapters meet — no special test infra needed.
 
-If the next session takes option C:
-
-```bash
-# On m4pro (where Qt 6 is already in the nix store):
-ssh m4pro
-mkdir -p ~/wb-ui && cd ~/wb-ui
-# Copy the whisper-wall ui/ pattern, swap whisper_wall guest for our
-# whistleblower-registry guest, rewrite the QML to a file picker +
-# upload progress bar + "anchor on chain" button.
-# Connect the QML actions to our document-indexing::Publisher via the
-# Rust cdylib FFI (whisper-wall's ui/ffi/ has the layout).
-
-nix build ./ui#install  # produces .lgx + installs to ~/.local/share/Logos/...
-```
-
-Then test in a real Logos Basecamp instance.
-
-## Build prerequisites (validated 2026-05-04)
-
-On the build host (m4pro):
-- Nix installed (Determinate, see install command in BUGS_FILED.md)
-- Apple SDK 11.3 (provided automatically by nix)
-- 30+ GB free disk for the dep tree
-- ~30-60 min for first cold build
-
-## Cleanup
-
-The crate is self-contained and not in the workspace members list, so
-`rm -rf adapters/logos/` is safe at any time. No other crate depends
-on it.
-
-## Build artifacts location (m4pro)
-
-- `~/logos-build/result/bin/logos_host` — per-module runtime host
-- `~/logos-build/result/bin/logos_host_qt` — Qt-wrapped variant
-- `~/logos-build/storage-result/lib/*.dylib` — storage module (when build completes)
-- `~/logos-build/delivery-result/lib/*.dylib` — delivery module (when build completes)
-- `~/logos-build/*.log` — build logs for diagnostics
+The `whistleblower-batch` binary already has a feature gate (`--mock-delivery`)
+that's the natural insertion point.

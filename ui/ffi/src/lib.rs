@@ -68,7 +68,7 @@ fn ffi_call(f: impl FnOnce() -> Result<String, String> + std::panic::UnwindSafe)
         Err(e) => {
             let msg = e
                 .downcast_ref::<&str>()
-                .map(|s| *s)
+                .copied()
                 .or_else(|| e.downcast_ref::<String>().map(|s| s.as_str()))
                 .unwrap_or("<unknown panic>");
             error_json(&format!("panic: {}", msg))
@@ -290,7 +290,7 @@ fn compute_metadata_hash_impl(args: &str) -> Result<String, String> {
 // Standard MIME alphabet, no line wrapping.
 fn base64_encode(bytes: &[u8]) -> String {
     const ALPHA: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    let mut out = String::with_capacity((bytes.len() + 2) / 3 * 4);
+    let mut out = String::with_capacity(bytes.len().div_ceil(3) * 4);
     for chunk in bytes.chunks(3) {
         let b0 = chunk[0];
         let b1 = chunk.get(1).copied().unwrap_or(0);
@@ -318,8 +318,13 @@ pub extern "C" fn whistleblower_version() -> *mut c_char {
     to_cstring("0.1.0".to_string())
 }
 
+/// # Safety
+///
+/// `s` must be a pointer previously returned by one of this crate's FFI
+/// functions (which all hand out `CString`s allocated by Rust), and must
+/// not have already been freed. Passing a null pointer is a no-op.
 #[no_mangle]
-pub extern "C" fn whistleblower_free_string(s: *mut c_char) {
+pub unsafe extern "C" fn whistleblower_free_string(s: *mut c_char) {
     if !s.is_null() {
         unsafe { drop(CString::from_raw(s)) };
     }
