@@ -1,5 +1,5 @@
 {
-  description = "Whistleblower Basecamp UI plugin — Qt6 C++ + Rust FFI";
+  description = "LP-0017 Whistleblower — LEZ registry program + reusable indexing module + Basecamp UI plugin";
 
   inputs = {
     # Follow logos-workspace's pinned nixpkgs so Qt versions match Basecamp.
@@ -32,11 +32,21 @@
           rustc = rustToolchain;
         };
 
-        # ── ZK circuit artifacts (needed by logos-blockchain-pol build.rs) ─────
-        # Fetched from the official GitHub release — fully hermetic.
+        # ── ZK circuit artifacts (needed by logos-blockchain-pol build.rs) ────
+        # Per-arch sha256s captured via `nix-prefetch-url`. Linux hash is
+        # the value whisper-wall uses; aarch64-darwin captured fresh.
+        circuitsHashes = {
+          "x86_64-linux"   = "13c5gkfsa70kca0nwffbsis2difmspyk8aqmlzhq12mhr3x1y4z9";
+          "aarch64-darwin" = "1algaks0s3ylm5pvxd8b35nncdhnskvh9fzphn5b90cx6cj0h035";
+        };
+        circuitsArch = {
+          "x86_64-linux"   = "linux-x86_64";
+          "aarch64-darwin" = "macos-aarch64";
+        };
         logosCiruits = pkgs.fetchurl {
-          url = "https://github.com/logos-blockchain/logos-blockchain-circuits/releases/download/v0.4.2/logos-blockchain-circuits-v0.4.2-linux-x86_64.tar.gz";
-          sha256 = "13c5gkfsa70kca0nwffbsis2difmspyk8aqmlzhq12mhr3x1y4z9";
+          url = "https://github.com/logos-blockchain/logos-blockchain-circuits/releases/download/v0.4.2/logos-blockchain-circuits-v0.4.2-${circuitsArch.${system} or "linux-x86_64"}.tar.gz";
+          # Use TOFU on first build — replace this hash with the printed value.
+          sha256 = circuitsHashes.${system} or "13c5gkfsa70kca0nwffbsis2difmspyk8aqmlzhq12mhr3x1y4z9";
         };
 
         circuitsDir = pkgs.runCommand "logos-blockchain-circuits" {} ''
@@ -44,40 +54,21 @@
           tar -xzf ${logosCiruits} -C $out --strip-components=1
         '';
 
-        # ── LEZ source (for nssa build.rs artifacts) ──────────────────────────
-        # nssa/build.rs reads artifacts/program_methods/*.bin relative to its
-        # CARGO_MANIFEST_DIR. The cargoLock fetcher already pulled this git source
-        # (same NAR hash as amm_core-0.1.0 outputHash), so this is cache-only.
+        # ── LEZ source (for nssa build.rs artifacts) ─────────────────────────
         lezSrc = pkgs.fetchgit {
           url = "https://github.com/logos-blockchain/logos-execution-zone.git";
           rev = "35d8df0d031315219f94d1546ceb862b0e5b208f";
           hash = "sha256-j0DzDvH88IUIReYi6N4FD6+mTIJOklQjaa9qjw4yHEg=";
         };
 
-        # ── Rust FFI cdylib ────────────────────────────────────────────────────
-        # The FFI has path deps on workspace siblings (../core, ../indexing,
-        # ../adapters/lez), so `src` is the whole workspace root, not just
-        # ui/ffi. cargoBuildFlags scopes the build to our cdylib so we
-        # don't pull in the guest, spike, or batch CLI.
+        # ── Rust FFI cdylib ──────────────────────────────────────────────────
+        # `src` is the whole workspace because the FFI has path deps on
+        # core/, indexing/, adapters/lez/. cargoBuildFlags scopes the build
+        # to just the FFI crate so we don't compile the guest etc.
         ffi = rustPlatform.buildRustPackage {
           pname = "whistleblower-ffi";
           version = "0.1.0";
-          # IMPORTANT — known limitation:
-          #
-          # `src = ../.` (the workspace root) is needed because the FFI has
-          # path deps on ../core, ../indexing, ../adapters/lez. But nix
-          # flakes can only see files within the directory containing
-          # flake.nix, so we hit "path '/nix/store/' is not in the Nix store"
-          # at eval time.
-          #
-          # The clean fix is to move this flake.nix to the workspace root.
-          # Pending that refactor, the workaround is to:
-          #   1. Run `cp ../Cargo.lock ./Cargo.lock` (gitignored)
-          #   2. Use one of the manual cargo build paths from ui/README.md
-          #      ("Build (development, local)") instead of nix build
-          # The flake below is structurally correct — it just needs the
-          # workspace-root move to unblock the eval-time path resolution.
-          src = ../.;
+          src = ./.;
 
           cargoLock = {
             lockFile = ./Cargo.lock;
@@ -88,31 +79,38 @@
               "amm_core-0.1.0"                          = "sha256-j0DzDvH88IUIReYi6N4FD6+mTIJOklQjaa9qjw4yHEg=";
               "jf-crhf-0.1.1"                           = "sha256-TUm91XROmUfqwFqkDmQEKyT9cOo1ZgAbuTDyEfe6ltg=";
               "jf-poseidon2-0.1.0"                      = "sha256-QeCjgZXO7lFzF2Gzm2f8XI08djm5jyKI6D8U0jNTPB8=";
-              "logos-blockchain-blend-crypto-0.1.2"     = "sha256-ypgXXvAUR4WbXGaOhoPy9AqTyYjqtIUye/Uyr1RF030=";
+              "logos-blockchain-blend-crypto-0.1.2"     = "sha256-8u4P4yDkxrHzQKZLtxl+orQjJCP55CCIxQZ1V2Lbruc=";
               "overwatch-0.1.0"                         = "sha256-L7R1GdhRNNsymYe3RVyYLAmd6x1YY08TBJp4hG4/YwE=";
             };
           };
 
           cargoBuildFlags = [ "-p" "whistleblower_ffi" ];
 
+          # whistleblower_ffi doesn't depend on the Risc0 guest, but cargo's
+          # workspace-wide dep walk still triggers methods/build.rs which
+          # invokes risc0-build's `embed_methods` — that panics in the nix
+          # sandbox because it tries to write to read-only paths. Setting
+          # RISC0_SKIP_BUILD=1 short-circuits embed_methods (it's a documented
+          # env var risc0-build honors).
+          RISC0_SKIP_BUILD = "1";
+
           # logos-blockchain-pol build.rs requires ZK circuit artifacts.
           LOGOS_BLOCKCHAIN_CIRCUITS = "${circuitsDir}";
 
           # nssa build.rs reads ../artifacts/program_methods/*.bin relative to
-          # its CARGO_MANIFEST_DIR (cargo-vendor-dir/nssa-0.1.0/).
+          # its CARGO_MANIFEST_DIR.
           preBuild = ''
             ln -sf "${lezSrc}/artifacts" ../cargo-vendor-dir/artifacts
           '';
 
-          # cdylib — no tests to run
           doCheck = false;
         };
 
-        # ── Qt6 C++ plugin ─────────────────────────────────────────────────────
+        # ── Qt6 C++ plugin ───────────────────────────────────────────────────
         plugin = pkgs.stdenv.mkDerivation {
           pname = "whistleblower-plugin";
           version = "0.1.0";
-          src = ./.;
+          src = ./ui;
 
           nativeBuildInputs = [
             pkgs.cmake
@@ -127,29 +125,25 @@
           ];
 
           cmakeFlags = [
-            # Point cmake at the nix-built FFI library — skips the manual
-            # `cargo build --release` step that the cmake else-branch would do.
             "-DWHISTLEBLOWER_FFI_LIB_DIR=${ffi}/lib"
           ];
 
           installPhase = ''
             runHook preInstall
             cmake --install .
-            # cmake install puts libs in $out/lib; add metadata and QML alongside.
-            cp ${./manifest.json} $out/manifest.json
-            cp ${./metadata.json} $out/metadata.json
-            cp -r ${./qml} $out/qml
+            cp ${./ui/manifest.json} $out/manifest.json
+            cp ${./ui/metadata.json} $out/metadata.json
+            cp -r ${./ui/qml} $out/qml
             runHook postInstall
           '';
         };
 
-        # ── Install helper ─────────────────────────────────────────────────────
-        # `nix run .#install` copies the built plugin into the Basecamp dev dir.
+        # ── Install helper ──────────────────────────────────────────────────
         installScript = pkgs.writeShellScriptBin "install-whistleblower-plugin" ''
           PLUGIN_DIR="$HOME/.local/share/Logos/LogosBasecampDev/plugins/whistleblower"
           mkdir -p "$PLUGIN_DIR"
-          cp -f ${plugin}/lib/libwhistleblower_plugin.so  "$PLUGIN_DIR/"
-          cp -f ${plugin}/lib/libwhistleblower_ffi.so     "$PLUGIN_DIR/"
+          cp -f ${plugin}/lib/libwhistleblower_plugin.* "$PLUGIN_DIR/" 2>/dev/null || true
+          cp -f ${plugin}/lib/libwhistleblower_ffi.*    "$PLUGIN_DIR/" 2>/dev/null || true
           cp -f ${plugin}/manifest.json                  "$PLUGIN_DIR/"
           cp -f ${plugin}/metadata.json                  "$PLUGIN_DIR/"
           echo "Installed to $PLUGIN_DIR"
@@ -161,11 +155,11 @@
         packages = {
           default = plugin;
           ffi     = ffi;
+          plugin  = plugin;
           install = installScript;
           lgx     = lgx;
         };
 
-        # Development shell with Qt6 + Rust on PATH for cmake iteration.
         devShells.default = pkgs.mkShell {
           nativeBuildInputs = [
             rustToolchain
@@ -174,10 +168,12 @@
           ];
           buildInputs = with pkgs.qt6; [ qtbase qtdeclarative ];
           shellHook = ''
-            echo "whistleblower UI dev shell"
+            echo "whistleblower workspace dev shell"
             echo "  cmake, ninja, Qt6, Rust all on PATH"
-            echo "  Build FFI:    cargo build --release (in ffi/)"
-            echo "  Build plugin: cmake -B build -GNinja && cmake --build build"
+            echo "  Build FFI:    cargo build --release -p whistleblower_ffi"
+            echo "  Build plugin: cmake -B build -GNinja ./ui && cmake --build build"
+            echo "  Build .lgx:   nix build .#lgx"
+            echo "  Install plugin (dev): nix run .#install"
           '';
         };
       });
