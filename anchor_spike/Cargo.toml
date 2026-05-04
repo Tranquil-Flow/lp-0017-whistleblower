@@ -9,14 +9,11 @@ name = "anchor_spike"
 path = "src/main.rs"
 
 [dependencies]
-nssa.workspace = true
 nssa_core = { workspace = true, features = ["host"] }
 wallet.workspace = true
-common.workspace = true
-sequencer_service_rpc = { workspace = true, features = ["client"] }
+document-indexing = { path = "../indexing" }
 whistleblower-core = { path = "../core" }
-whistleblower-methods = { path = "../methods" }
-borsh.workspace = true
+whistleblower-lez-adapter = { path = "../adapters/lez" }
 anyhow = "1"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 hex.workspace = true

@@ -80,16 +80,13 @@ name = "anchor-spike"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "borsh",
- "common",
+ "document-indexing",
  "hex",
- "nssa",
  "nssa_core",
- "sequencer_service_rpc",
  "tokio",
  "wallet",
  "whistleblower-core",
- "whistleblower-methods",
+ "whistleblower-lez-adapter",
 ]
 
 [[package]]

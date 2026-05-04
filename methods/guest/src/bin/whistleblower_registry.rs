@@ -1,80 +1,77 @@
-//! `whistleblower-registry` LEZ program — Task 1.1 (registry program proper).
+//! `whistleblower-registry` LEZ program — production-shaped PDA-per-CID design.
 //!
-//! Operates on a single registry-root PDA. Each transaction supplies one
-//! `RegistryInstruction` (borsh-encoded as `Vec<u8>`); the guest decodes it,
-//! reads the current `RegistryStateOnChain` from the PDA's data, applies
-//! the instruction (idempotent upsert per CID), and writes the new state back.
+//! Each anchored CID lives in its own LEZ account, derived as a PDA from
+//! `(self_program_id, PdaSeed::new(cid_hash))`. This gives:
 //!
-//! Claim type is `Claim::Pda(REGISTRY_PDA_SEED_BYTES)` — the runtime confirms
-//! the input account ID equals the PDA derived from this program's id and
-//! the same seed, then assigns the account to this program. After first
-//! claim the program owns the PDA and subsequent calls just mutate state.
+//!   - O(1) per-anchor cost (each tx touches only the entries it adds)
+//!   - Unbounded registry capacity (new account per CID, no shared blob)
+//!   - Built-in idempotency: re-anchoring an existing PDA finds it already
+//!     program-owned (data non-empty), returns success without state change
+//!   - Trivial off-chain query: derive the PDA from `cid_hash`, fetch
+//!     account.data, decode `AnchorEntry` directly. No tx needed.
+//!
+//! Wire format: host borsh-encodes a `RegistryInstruction`, sends it as
+//! `Vec<u8>` via nssa's serde. The host is responsible for pre-deriving
+//! all the entry-account PDAs and including them in the transaction's
+//! `account_ids` in the SAME ORDER as `RegistryInstruction::AnchorBatch.entries`
+//! (or the single PDA for `AnchorOne`). The guest verifies that order by
+//! re-deriving each PDA from the entry's CID and asserting it matches the
+//! pre_state's `account_id`.
 
 use borsh::{BorshDeserialize, BorshSerialize};
+use nssa_core::account::{AccountId, AccountWithMetadata};
 use nssa_core::program::{
     read_nssa_inputs, AccountPostState, Claim, PdaSeed, ProgramInput, ProgramOutput,
 };
 use whistleblower_core::{
-    cid_hash as compute_cid_hash, AnchorEntry, CanonicalCid, CidHash, MetadataHash,
-    RegistryInstruction, REGISTRY_PDA_SEED_BYTES,
+    cid_hash as compute_cid_hash, AnchorEntry, CanonicalCid, MetadataHash, RegistryInstruction,
 };
 
-/// Wire-format instruction the host sends. Borsh-encoded `RegistryInstruction`
-/// from `whistleblower-core`.
 type GuestInstruction = Vec<u8>;
 
-/// On-chain state held in the single registry-root PDA. Capacity is bounded
-/// by LEZ's per-account size limit; for LP-0017's spike scope this is fine.
-/// Bucketing is a follow-up if we ever need to grow past a few thousand entries.
-#[derive(Debug, Clone, Default, BorshSerialize, BorshDeserialize)]
-pub struct RegistryStateOnChain {
-    pub entries: Vec<AnchorEntry>,
-}
+/// Process one (cid, metadata_hash) entry against its corresponding pre_state
+/// account. Returns the post-state to emit. Idempotent: if the account is
+/// already program-owned (data non-empty), returns it unchanged.
+fn process_entry(
+    self_program_id: &[u32; 8],
+    pre: &AccountWithMetadata,
+    cid: CanonicalCid,
+    metadata_hash: MetadataHash,
+    anchor_timestamp: u64,
+) -> AccountPostState {
+    let cid_hash = compute_cid_hash(&cid);
 
-impl RegistryStateOnChain {
-    fn contains(&self, cid_hash: &CidHash) -> bool {
-        self.entries.iter().any(|e| &e.cid_hash == cid_hash)
+    // Verify the host pre-derived the right PDA for this CID. The runtime
+    // also checks PDA-derivation when the claim is processed, but doing it
+    // here gives a clearer error message and prevents wasted writes.
+    let expected_pda: AccountId = (self_program_id, &PdaSeed::new(cid_hash.0)).into();
+    assert!(
+        pre.account_id == expected_pda,
+        "WL-REG: pre_state account_id does not match expected PDA for cid",
+    );
+
+    // Already-anchored detection: program-owned PDAs have non-empty data.
+    let pre_data: Vec<u8> = pre.account.data.clone().into();
+    if !pre_data.is_empty() {
+        // No-op success — return the existing state unchanged, no claim needed.
+        // This is the idempotency guarantee the spike + spec require.
+        return AccountPostState::new(pre.account.clone());
     }
 
-    /// Idempotent insert. Returns `true` iff the entry was newly inserted.
-    fn upsert(
-        &mut self,
-        cid: CanonicalCid,
-        metadata_hash: MetadataHash,
-        anchor_timestamp: u64,
-    ) -> bool {
-        let cid_hash = compute_cid_hash(&cid);
-        if self.contains(&cid_hash) {
-            return false;
-        }
-        self.entries.push(AnchorEntry {
-            cid,
-            cid_hash,
-            metadata_hash,
-            anchor_timestamp,
-        });
-        true
-    }
+    // Fresh PDA — encode the AnchorEntry, claim the account.
+    let entry = AnchorEntry {
+        cid,
+        cid_hash,
+        metadata_hash,
+        anchor_timestamp,
+    };
+    let bytes = borsh::to_vec(&entry).expect("AnchorEntry encoding fits");
+    let mut post_account = pre.account.clone();
+    post_account.data = bytes
+        .try_into()
+        .expect("AnchorEntry size within account-data limit");
 
-    fn apply(&mut self, instruction: RegistryInstruction) {
-        match instruction {
-            RegistryInstruction::AnchorOne {
-                cid,
-                metadata_hash,
-                anchor_timestamp,
-            } => {
-                self.upsert(cid, metadata_hash, anchor_timestamp);
-            }
-            RegistryInstruction::AnchorBatch {
-                entries,
-                anchor_timestamp,
-            } => {
-                for (cid, metadata_hash) in entries {
-                    self.upsert(cid, metadata_hash, anchor_timestamp);
-                }
-            }
-        }
-    }
+    AccountPostState::new_claimed_if_default(post_account, Claim::Pda(PdaSeed::new(cid_hash.0)))
 }
 
 fn main() {
@@ -88,52 +85,60 @@ fn main() {
         instruction_data,
     ) = read_nssa_inputs::<GuestInstruction>();
 
-    let pre_state = pre_states
-        .into_iter()
-        .next()
-        .expect("WL-REG: pre_states must have at least 1 entry");
+    let registry_instruction = RegistryInstruction::try_from_slice(&instruction_bytes)
+        .unwrap_or_else(|e| panic!("WL-REG: malformed instruction: {}", e));
 
-    let registry_instruction =
-        RegistryInstruction::try_from_slice(&instruction_bytes).unwrap_or_else(|e| {
-            panic!("WL-REG: malformed registry instruction: {}", e)
-        });
-
-    // Decode current registry state. Empty data == fresh PDA (first claim).
-    let current_bytes: Vec<u8> = pre_state.account.data.clone().into();
-    let mut state: RegistryStateOnChain = if current_bytes.is_empty() {
-        RegistryStateOnChain::default()
-    } else {
-        BorshDeserialize::try_from_slice(&current_bytes)
-            .unwrap_or_else(|e| panic!("WL-REG: corrupt registry state: {}", e))
+    let post_states: Vec<AccountPostState> = match &registry_instruction {
+        RegistryInstruction::AnchorOne {
+            cid,
+            metadata_hash,
+            anchor_timestamp,
+        } => {
+            assert!(
+                pre_states.len() == 1,
+                "WL-REG: AnchorOne expects exactly 1 pre_state, got {}",
+                pre_states.len()
+            );
+            vec![process_entry(
+                &self_program_id,
+                &pre_states[0],
+                cid.clone(),
+                *metadata_hash,
+                *anchor_timestamp,
+            )]
+        }
+        RegistryInstruction::AnchorBatch {
+            entries,
+            anchor_timestamp,
+        } => {
+            assert!(
+                entries.len() == pre_states.len(),
+                "WL-REG: AnchorBatch entry count {} != pre_states count {}",
+                entries.len(),
+                pre_states.len()
+            );
+            entries
+                .iter()
+                .zip(pre_states.iter())
+                .map(|((cid, metadata_hash), pre)| {
+                    process_entry(
+                        &self_program_id,
+                        pre,
+                        cid.clone(),
+                        *metadata_hash,
+                        *anchor_timestamp,
+                    )
+                })
+                .collect()
+        }
     };
-
-    // Apply (idempotent — duplicate CIDs are no-op success).
-    state.apply(registry_instruction);
-
-    // Encode and emit post-state.
-    let new_bytes = borsh::to_vec(&state).expect("registry state encoding fits");
-    let mut post_account = pre_state.account.clone();
-    post_account.data = new_bytes
-        .try_into()
-        .expect("registry state size within account-data limit");
-
-    // First call: PDA is in default state -> claim it via Claim::Pda(seed),
-    //   the runtime confirms the input account equals the PDA derived from
-    //   (self_program_id, REGISTRY_PDA_SEED_BYTES) and assigns ownership.
-    // Subsequent calls: PDA already owned by us -> emit a state update without
-    //   re-requesting a claim (re-claiming would be rejected because
-    //   `post.account.program_owner != DEFAULT_PROGRAM_ID` per nssa validation).
-    let post_state = AccountPostState::new_claimed_if_default(
-        post_account,
-        Claim::Pda(PdaSeed::new(REGISTRY_PDA_SEED_BYTES)),
-    );
 
     ProgramOutput::new(
         self_program_id,
         caller_program_id,
         instruction_data,
-        vec![pre_state],
-        vec![post_state],
+        pre_states,
+        post_states,
     )
     .write();
 }
