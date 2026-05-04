@@ -1,6 +1,7 @@
 use borsh::{BorshDeserialize, BorshSerialize};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use std::collections::BTreeMap;
 
 pub const DEFAULT_CONTENT_TOPIC: &str = "/lp0017-whistleblower/1/cids/json";
 pub const CID_HASH_DOMAIN: &str = "lp0017:cid:v1\0";
@@ -32,6 +33,8 @@ impl CanonicalCid {
     PartialEq,
     Eq,
     Hash,
+    PartialOrd,
+    Ord,
     Serialize,
     Deserialize,
     BorshSerialize,
@@ -82,6 +85,83 @@ pub struct AnchorEntry {
     pub cid_hash: CidHash,
     pub metadata_hash: MetadataHash,
     pub anchor_timestamp: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AnchorOneOutcome {
+    pub entry: AnchorEntry,
+    pub inserted: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AnchorBatchOutcome {
+    pub entries: Vec<AnchorEntry>,
+    pub inserted: usize,
+    pub skipped_existing: usize,
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct RegistryState {
+    entries: BTreeMap<CidHash, AnchorEntry>,
+}
+
+impl RegistryState {
+    pub fn anchor_one(
+        &mut self,
+        cid: CanonicalCid,
+        metadata_hash: MetadataHash,
+        anchor_timestamp: u64,
+    ) -> Result<AnchorOneOutcome, CoreError> {
+        let cid_hash = cid_hash(&cid);
+        if let Some(entry) = self.entries.get(&cid_hash) {
+            return Ok(AnchorOneOutcome {
+                entry: entry.clone(),
+                inserted: false,
+            });
+        }
+
+        let entry = AnchorEntry {
+            cid,
+            cid_hash,
+            metadata_hash,
+            anchor_timestamp,
+        };
+        self.entries.insert(cid_hash, entry.clone());
+        Ok(AnchorOneOutcome {
+            entry,
+            inserted: true,
+        })
+    }
+
+    pub fn anchor_batch(
+        &mut self,
+        entries: Vec<(CanonicalCid, MetadataHash)>,
+        anchor_timestamp: u64,
+    ) -> Result<AnchorBatchOutcome, CoreError> {
+        let mut anchored = Vec::with_capacity(entries.len());
+        let mut inserted = 0;
+        let mut skipped_existing = 0;
+
+        for (cid, metadata_hash) in entries {
+            let outcome = self.anchor_one(cid, metadata_hash, anchor_timestamp)?;
+            if outcome.inserted {
+                inserted += 1;
+            } else {
+                skipped_existing += 1;
+            }
+            anchored.push(outcome.entry);
+        }
+
+        Ok(AnchorBatchOutcome {
+            entries: anchored,
+            inserted,
+            skipped_existing,
+        })
+    }
+
+    pub fn query_by_cid_hash(&self, cid_hash: CidHash) -> Result<Option<AnchorEntry>, CoreError> {
+        Ok(self.entries.get(&cid_hash).cloned())
+    }
 }
 
 pub fn cid_hash(cid: &CanonicalCid) -> CidHash {
