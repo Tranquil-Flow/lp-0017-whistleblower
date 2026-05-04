@@ -21,9 +21,7 @@
 
 use crate::orchestration::DurableDedupeStore;
 use crate::retry::{with_retry, RetryPolicy};
-use crate::traits::{
-    AdapterError, DeliveryClient, ReceivedEnvelope, RegistryClient,
-};
+use crate::traits::{AdapterError, DeliveryClient, ReceivedEnvelope, RegistryClient};
 use futures::StreamExt;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -199,7 +197,7 @@ async fn flush_batch<R: RegistryClient + ?Sized>(
     config: &BatchConfig,
     sink: &mpsc::UnboundedSender<BatchSubmission>,
 ) -> Result<(), BatchError> {
-    let drained: Vec<_> = buffer.drain(..).collect();
+    let drained: Vec<_> = std::mem::take(buffer);
     let count = drained.len();
     let registry = registry.clone();
     let policy = config.retry_policy;

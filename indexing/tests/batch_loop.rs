@@ -79,7 +79,10 @@ async fn batches_are_flushed_at_size_threshold() {
         .await
         .expect("shutdown flush within 2s")
         .expect("submission channel not closed");
-    assert_eq!(second.batch_size, 2, "shutdown flush should drain remaining 2");
+    assert_eq!(
+        second.batch_size, 2,
+        "shutdown flush should drain remaining 2"
+    );
 
     let outcome = tokio::time::timeout(Duration::from_secs(2), loop_task)
         .await

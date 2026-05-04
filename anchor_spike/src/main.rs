@@ -58,8 +58,7 @@ fn make_metadata_hash(seed: u8) -> MetadataHash {
 #[tokio::main]
 async fn main() -> Result<()> {
     let wallet_core = Arc::new(
-        WalletCore::from_env()
-            .context("WalletCore::from_env failed — set NSSA_WALLET_HOME_DIR")?,
+        WalletCore::from_env().context("WalletCore::from_env failed — set NSSA_WALLET_HOME_DIR")?,
     );
     let client = LezRegistryClient::new(wallet_core.clone()).context("LezRegistryClient::new")?;
 
@@ -80,12 +79,19 @@ async fn main() -> Result<()> {
         .await
         .context("anchor_one(cid_a)")?;
     if entry1.cid != cid_a {
-        bail!("test 1: returned entry cid mismatch ({} vs {})", entry1.cid.as_str(), cid_a.as_str());
+        bail!(
+            "test 1: returned entry cid mismatch ({} vs {})",
+            entry1.cid.as_str(),
+            cid_a.as_str()
+        );
     }
     if entry1.metadata_hash != mh_a {
         bail!("test 1: returned metadata_hash mismatch");
     }
-    println!("  ✓ entry stored at PDA, anchor_timestamp = {}\n", entry1.anchor_timestamp);
+    println!(
+        "  ✓ entry stored at PDA, anchor_timestamp = {}\n",
+        entry1.anchor_timestamp
+    );
 
     println!("[2/4] anchor_one(cid_a) again — duplicate, expect no-op success");
     let entry2 = client
@@ -95,10 +101,14 @@ async fn main() -> Result<()> {
     if entry2.anchor_timestamp != entry1.anchor_timestamp {
         bail!(
             "test 2: duplicate anchor must preserve original timestamp (got {} vs {})",
-            entry2.anchor_timestamp, entry1.anchor_timestamp
+            entry2.anchor_timestamp,
+            entry1.anchor_timestamp
         );
     }
-    println!("  ✓ original timestamp preserved ({})\n", entry2.anchor_timestamp);
+    println!(
+        "  ✓ original timestamp preserved ({})\n",
+        entry2.anchor_timestamp
+    );
 
     println!("[3/4] anchor_batch([cid_a, cid_b]) — mixed existing + new in one tx");
     let mixed = client
@@ -119,7 +129,12 @@ async fn main() -> Result<()> {
 
     println!("[4/4] anchor_batch(10 fresh CIDs) — single tx with 10 distinct accounts");
     let fresh: Vec<(CanonicalCid, MetadataHash)> = (10..20)
-        .map(|i| (make_cid(&format!("{suffix}-{i}")), make_metadata_hash(i as u8)))
+        .map(|i| {
+            (
+                make_cid(&format!("{suffix}-{i}")),
+                make_metadata_hash(i as u8),
+            )
+        })
         .collect();
     let fresh_count = fresh.len();
     let result = client
@@ -127,7 +142,10 @@ async fn main() -> Result<()> {
         .await
         .context("anchor_batch(10 fresh)")?;
     if result.len() != fresh_count {
-        bail!("test 4: expected {fresh_count} entries returned, got {}", result.len());
+        bail!(
+            "test 4: expected {fresh_count} entries returned, got {}",
+            result.len()
+        );
     }
     println!("  ✓ {} entries anchored in one tx\n", result.len());
 

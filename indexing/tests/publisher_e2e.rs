@@ -4,9 +4,7 @@ use document_indexing::{MetadataInputs, Publisher};
 use std::path::PathBuf;
 use std::sync::Arc;
 use whistleblower_core::{cid_hash, CanonicalCid};
-use whistleblower_mock_adapter::{
-    MockDeliveryClient, MockRegistryClient, MockStorageClient,
-};
+use whistleblower_mock_adapter::{MockDeliveryClient, MockRegistryClient, MockStorageClient};
 
 fn inputs() -> MetadataInputs {
     MetadataInputs {
@@ -84,12 +82,18 @@ async fn publish_then_anchor_in_two_steps() {
 
     // Step 2 — anchor the published outcome (caller-controlled — could be
     // the original publisher or any altruistic third party, per spec line 36).
-    let entry = publisher.anchor_published(&outcome).await.expect("anchor_published");
+    let entry = publisher
+        .anchor_published(&outcome)
+        .await
+        .expect("anchor_published");
     assert_eq!(entry.cid, outcome.cid);
     assert_eq!(entry.metadata_hash, outcome.metadata_hash);
 
     // Re-anchoring is idempotent (RegistryClient contract).
-    let entry_again = publisher.anchor_published(&outcome).await.expect("re-anchor");
+    let entry_again = publisher
+        .anchor_published(&outcome)
+        .await
+        .expect("re-anchor");
     assert_eq!(entry_again, entry);
 }
 

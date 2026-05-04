@@ -134,8 +134,8 @@ impl LezRegistryClient {
 
         // Poll get_transaction(hash) until it lands or we exhaust the timeout.
         let poll_interval = Duration::from_millis(750);
-        let max_attempts = (self.confirmation_timeout.as_millis() / poll_interval.as_millis())
-            as usize;
+        let max_attempts =
+            (self.confirmation_timeout.as_millis() / poll_interval.as_millis()) as usize;
         for _ in 0..max_attempts {
             tokio::time::sleep(poll_interval).await;
             if let Ok(Some(_)) = self
@@ -190,19 +190,19 @@ impl RegistryClient for LezRegistryClient {
             "anchor_one",
         )
         .await?;
-        self.read_entry(pda)
-            .await?
-            .ok_or_else(|| AdapterError::retryable(
-                "anchor_one: entry-PDA still empty after tx confirmation",
-            ))
+        self.read_entry(pda).await?.ok_or_else(|| {
+            AdapterError::retryable("anchor_one: entry-PDA still empty after tx confirmation")
+        })
     }
 
     async fn anchor_batch(
         &self,
         entries: Vec<(CanonicalCid, MetadataHash)>,
     ) -> Result<Vec<AnchorEntry>, AdapterError> {
-        let pdas: Vec<AccountId> =
-            entries.iter().map(|(cid, _)| self.entry_pda_for(cid)).collect();
+        let pdas: Vec<AccountId> = entries
+            .iter()
+            .map(|(cid, _)| self.entry_pda_for(cid))
+            .collect();
         let timestamp = self.next_timestamp();
         self.submit_and_wait(
             pdas.clone(),
@@ -216,9 +216,7 @@ impl RegistryClient for LezRegistryClient {
         let mut out = Vec::with_capacity(pdas.len());
         for pda in pdas {
             let entry = self.read_entry(pda).await?.ok_or_else(|| {
-                AdapterError::retryable(
-                    "anchor_batch: entry-PDA still empty after tx confirmation",
-                )
+                AdapterError::retryable("anchor_batch: entry-PDA still empty after tx confirmation")
             })?;
             out.push(entry);
         }

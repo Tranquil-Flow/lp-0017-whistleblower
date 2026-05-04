@@ -19,9 +19,7 @@
 //! and the subscribers are responsible for filtering duplicates per spec line 53.
 
 use crate::retry::{with_retry, RetryPolicy};
-use crate::traits::{
-    AdapterError, DeliveryClient, PublishReceipt, RegistryClient, StorageClient,
-};
+use crate::traits::{AdapterError, DeliveryClient, PublishReceipt, RegistryClient, StorageClient};
 use std::path::PathBuf;
 use std::sync::Arc;
 use thiserror::Error;

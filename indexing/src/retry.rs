@@ -44,7 +44,9 @@ impl RetryPolicy {
     }
 
     fn backoff_for(&self, attempt: u32) -> Duration {
-        let exp = self.backoff_multiplier.saturating_pow(attempt.saturating_sub(1));
+        let exp = self
+            .backoff_multiplier
+            .saturating_pow(attempt.saturating_sub(1));
         let raw = self.initial_backoff.saturating_mul(exp);
         std::cmp::min(raw, self.max_backoff)
     }
@@ -52,10 +54,7 @@ impl RetryPolicy {
 
 /// Retry an adapter call according to `policy`. Returns the first success
 /// or the last error after `max_attempts`. Non-retryable errors short-circuit.
-pub async fn with_retry<F, Fut, T>(
-    policy: RetryPolicy,
-    mut op: F,
-) -> Result<T, AdapterError>
+pub async fn with_retry<F, Fut, T>(policy: RetryPolicy, mut op: F) -> Result<T, AdapterError>
 where
     F: FnMut() -> Fut,
     Fut: Future<Output = Result<T, AdapterError>>,

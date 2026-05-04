@@ -35,8 +35,7 @@ fn run_suffix() -> String {
 #[ignore = "requires lgs localnet + deployed program + NSSA_WALLET_HOME_DIR"]
 async fn lez_adapter_anchor_one_then_query() {
     let wallet_core = Arc::new(
-        WalletCore::from_env()
-            .expect("WalletCore::from_env failed — is NSSA_WALLET_HOME_DIR set?"),
+        WalletCore::from_env().expect("WalletCore::from_env failed — is NSSA_WALLET_HOME_DIR set?"),
     );
     let client = LezRegistryClient::new(wallet_core).expect("LezRegistryClient::new");
     let suffix = run_suffix();
@@ -62,8 +61,7 @@ async fn lez_adapter_anchor_one_then_query() {
 #[ignore = "requires lgs localnet + deployed program + NSSA_WALLET_HOME_DIR"]
 async fn lez_adapter_anchor_batch_idempotent() {
     let wallet_core = Arc::new(
-        WalletCore::from_env()
-            .expect("WalletCore::from_env failed — is NSSA_WALLET_HOME_DIR set?"),
+        WalletCore::from_env().expect("WalletCore::from_env failed — is NSSA_WALLET_HOME_DIR set?"),
     );
     let client = LezRegistryClient::new(wallet_core).expect("LezRegistryClient::new");
     let suffix = run_suffix();

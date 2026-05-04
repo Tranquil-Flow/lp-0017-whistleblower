@@ -11,7 +11,9 @@ pub const CID_HASH_DOMAIN: &str = "lp0017:cid:v1\0";
 /// own `cid_hash` as the seed (`PdaSeed::new(cid_hash.0)`), so this
 /// constant is no longer used in production code paths. Kept to preserve
 /// the historical spike binary and to avoid breaking external callers.
-#[deprecated(note = "v1 root-PDA design replaced by PDA-per-CID; derive seed from cid_hash instead")]
+#[deprecated(
+    note = "v1 root-PDA design replaced by PDA-per-CID; derive seed from cid_hash instead"
+)]
 pub const REGISTRY_PDA_SEED_BYTES: [u8; 32] = [0xAB; 32];
 
 #[derive(

@@ -62,12 +62,10 @@ struct Cli {
 async fn main() -> Result<()> {
     let cli = Cli::parse();
 
-    let wallet_core = Arc::new(
-        WalletCore::from_env()
-            .context("WalletCore::from_env failed — set NSSA_WALLET_HOME_DIR to a seeded wallet dir")?,
-    );
-    let registry =
-        Arc::new(LezRegistryClient::new(wallet_core).context("LezRegistryClient::new")?);
+    let wallet_core = Arc::new(WalletCore::from_env().context(
+        "WalletCore::from_env failed — set NSSA_WALLET_HOME_DIR to a seeded wallet dir",
+    )?);
+    let registry = Arc::new(LezRegistryClient::new(wallet_core).context("LezRegistryClient::new")?);
 
     if !cli.mock_delivery {
         anyhow::bail!(
@@ -100,7 +98,9 @@ async fn main() -> Result<()> {
     tokio::spawn(async move {
         match tokio::signal::ctrl_c().await {
             Ok(()) => {
-                eprintln!("\n[whistleblower-batch] SIGINT received — flushing pending and stopping.");
+                eprintln!(
+                    "\n[whistleblower-batch] SIGINT received — flushing pending and stopping."
+                );
                 let _ = shutdown_for_signal.send(true);
             }
             Err(e) => eprintln!("[whistleblower-batch] signal handler error: {e}"),
