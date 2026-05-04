@@ -5,6 +5,8 @@ members = [
     "indexing",
     "adapters/mock",
     "batch",
+    "methods",
+    "methods/guest",
 ]
 
 [workspace.package]
@@ -13,6 +15,7 @@ license = "MIT OR Apache-2.0"
 repository = "https://github.com/Tranquil-Flow/whistleblower"
 
 [workspace.dependencies]
+# Core (host + guest)
 async-trait = "0.1"
 base64 = "0.22"
 borsh = { version = "1", features = ["derive"] }
@@ -23,3 +26,18 @@ serde_json = "1"
 sha2 = "0.10"
 tempfile = "3"
 thiserror = "1"
+
+# LEZ (pinned to v0.2.0-rc1 per logos-scaffold's pin)
+nssa = { git = "https://github.com/logos-blockchain/logos-execution-zone.git", rev = "35d8df0d031315219f94d1546ceb862b0e5b208f" }
+nssa_core = { git = "https://github.com/logos-blockchain/logos-execution-zone.git", rev = "35d8df0d031315219f94d1546ceb862b0e5b208f" }
+wallet = { git = "https://github.com/logos-blockchain/logos-execution-zone.git", rev = "35d8df0d031315219f94d1546ceb862b0e5b208f" }
+
+# Risc0 (must match installed cargo-risczero version)
+risc0-zkvm = { version = "=3.0.5", features = ["std"] }
+risc0-build = "=3.0.5"
+
+# SPEL framework (for #[lez_program] macros + IDL generation)
+spel-framework = { git = "https://github.com/logos-co/spel.git", rev = "ed3bbedb4b684645da05455d30a4a0be7cc4dfe0" }
+
+# Build-time deps for guest programs
+ruint = "=1.17.0"

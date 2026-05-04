@@ -2,5 +2,9 @@
 **/*.rs.bk
 .DS_Store
 .env
+.env.local
 /localnet-data/
 /queue.db
+# lgs scaffold runtime state (sequencer wallets, sequencer cache)
+.scaffold/
+Cargo.lock.bak
