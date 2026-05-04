@@ -18,3 +18,4 @@ whistleblower-core = { path = "../core" }
 [dev-dependencies]
 tempfile.workspace = true
 whistleblower-mock-adapter = { path = "../adapters/mock" }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "time"] }
