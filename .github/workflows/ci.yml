@@ -1,0 +1,106 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # Fast tier: pure-Rust unit + integration tests that don't touch the
+  # Risc0 toolchain or a live sequencer. Runs on every push.
+  test-fast:
+    name: Fast tests (no sequencer, no guest build)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain (matches workspace pin)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - name: Cache cargo registry + git deps
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: cargo fmt --check
+        run: cargo fmt --all --check
+
+      - name: cargo clippy (our crates only)
+        run: |
+          cargo clippy -p whistleblower-core -p document-indexing \
+            -p whistleblower-mock-adapter --release -- -D warnings
+
+      - name: cargo test (excludes guest + spike + adapter live tests)
+        run: |
+          cargo test --workspace \
+            --exclude whistleblower-methods \
+            --exclude whistleblower-programs \
+            --exclude anchor-spike \
+            --release
+
+  # Slow tier: real-proof end-to-end against a deployed program. Requires
+  # the full Logos toolchain. Currently a manual workflow_dispatch trigger
+  # because the toolchain install isn't yet automated.
+  test-real-proof:
+    name: Real-proof E2E (RISC0_DEV_MODE=0)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch'
+    needs: test-fast
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: TODO install Logos toolchain
+        run: |
+          echo "This workflow needs:"
+          echo "  - logos-scaffold installed"
+          echo "  - logos-co/spel installed"
+          echo "  - logos-blockchain-circuits release at ~/.logos-blockchain-circuits"
+          echo "  - cargo-risczero v3.0.5 + r0vm v3.0.5 in PATH"
+          echo "  - docker daemon running"
+          echo "  - rzup install"
+          echo "See BUGS_FILED.md for the verified install order."
+          exit 1
+
+      - name: lgs build
+        run: lgs build
+
+      - name: lgs localnet start (background)
+        run: |
+          lgs localnet start &
+          sleep 5
+
+      - name: lgs deploy
+        run: |
+          lgs deploy --program-path \
+            target/riscv-guest/whistleblower-methods/whistleblower-programs/riscv32im-risc0-zkvm-elf/release/whistleblower_registry.bin
+
+      - name: Run live integration tests with RISC0_DEV_MODE=0
+        env:
+          RISC0_DEV_MODE: "0"
+          WORKSPACE_DIR: ${{ github.workspace }}
+        run: |
+          export NSSA_WALLET_HOME_DIR="$WORKSPACE_DIR/.scaffold/wallet"
+          cargo test -p whistleblower-lez-adapter --release -- --ignored --nocapture
+
+      - name: Capture sequencer logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sequencer-logs
+          path: .scaffold/logs/
+
+      - name: lgs localnet stop
+        if: always()
+        run: lgs localnet stop || true
