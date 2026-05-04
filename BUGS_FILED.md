@@ -93,7 +93,47 @@ mv logos-blockchain-circuits-v0.4.2-macos-aarch64 ~/.logos-blockchain-circuits
 
 **Severity:** moderate — blocks first-run install for new builders.
 
-### 5. `cargo install cargo-risczero` fails on macOS without full Xcode
+### 5. `nix build github:logos-co/logos-liblogos` fails with `gtest_discover_tests` 5s timeout
+
+**Repos affected:** `logos-co/logos-liblogos` (its `default`/`logos-liblogos`
+output via that repo's flake).
+
+**Symptom:** `nix build github:logos-co/logos-liblogos` (or `.#logos-liblogos`,
+`.#logos-liblogos-bin`) succeeds at the link step (`[27/27] Linking CXX
+executable bin/logos_core_tests`) but fails immediately after with:
+
+```
+CMake Error at .../GoogleTestAddTests.cmake:132 (message):
+  Error running test executable.
+  Path: '.../build/bin/logos_core_tests'
+  Result: Process terminated due to timeout
+```
+
+cmake's `gtest_discover_tests` runs the test binary with a 5-second timeout
+to enumerate tests; the binary either SIGSEGVs at startup or is too slow
+in the nix sandbox.
+
+This is the same shape as the closed-and-fixed issue logos-basecamp#77
+(per memory: "nix build fails: gtest_discover_tests timeout in
+logos-liblogos on macOS").
+
+**Workaround we used:** build the `portable` output instead, which
+skips the test discovery step and produces the same `bin/logos_host` +
+`bin/logos_host_qt` binaries:
+
+```bash
+nix build github:logos-co/logos-liblogos#portable
+```
+
+**Suggested fix:** bump the gtest_discover_tests TIMEOUT to 30+s in
+the cmake config, or condition test discovery on a build-time env
+var so package builds skip it by default.
+
+**Severity:** moderate — blocks anyone following the storage-module
+README's `logoscore` invocation (which references the runtime that
+the failed build was supposed to install).
+
+### 6. `cargo install cargo-risczero` fails on macOS without full Xcode
 
 **Repos affected:** `risc0/risc0` (`risc0-build-kernel` build script).
 

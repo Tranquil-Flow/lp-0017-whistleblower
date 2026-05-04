@@ -61,9 +61,7 @@ fn error_json(msg: &str) -> *mut c_char {
     to_cstring(json!({"success": false, "error": msg}).to_string())
 }
 
-fn ffi_call(
-    f: impl FnOnce() -> Result<String, String> + std::panic::UnwindSafe,
-) -> *mut c_char {
+fn ffi_call(f: impl FnOnce() -> Result<String, String> + std::panic::UnwindSafe) -> *mut c_char {
     match std::panic::catch_unwind(f) {
         Ok(Ok(r)) => to_cstring(r),
         Ok(Err(e)) => error_json(&e),
@@ -144,13 +142,8 @@ pub extern "C" fn whistleblower_anchor_one(args_json: *const c_char) -> *mut c_c
 fn anchor_one_impl(args: &str) -> Result<String, String> {
     let v: Value = serde_json::from_str(args).map_err(|e| format!("invalid JSON: {}", e))?;
     let wallet = init_wallet(&v)?;
-    let cid = CanonicalCid::new(
-        v["cid"]
-            .as_str()
-            .ok_or("missing cid")?
-            .to_string(),
-    )
-    .map_err(|e| format!("invalid cid: {}", e))?;
+    let cid = CanonicalCid::new(v["cid"].as_str().ok_or("missing cid")?.to_string())
+        .map_err(|e| format!("invalid cid: {}", e))?;
     let metadata_hash = parse_metadata_hash(
         v["metadata_hash_hex"]
             .as_str()
@@ -185,13 +178,8 @@ pub extern "C" fn whistleblower_query_by_cid(args_json: *const c_char) -> *mut c
 fn query_by_cid_impl(args: &str) -> Result<String, String> {
     let v: Value = serde_json::from_str(args).map_err(|e| format!("invalid JSON: {}", e))?;
     let wallet = init_wallet(&v)?;
-    let cid = CanonicalCid::new(
-        v["cid"]
-            .as_str()
-            .ok_or("missing cid")?
-            .to_string(),
-    )
-    .map_err(|e| format!("invalid cid: {}", e))?;
+    let cid = CanonicalCid::new(v["cid"].as_str().ok_or("missing cid")?.to_string())
+        .map_err(|e| format!("invalid cid: {}", e))?;
     let cid_hash = compute_cid_hash(&cid);
 
     let client = LezRegistryClient::new(wallet)
@@ -226,11 +214,7 @@ pub extern "C" fn whistleblower_query_by_cid_hash(args_json: *const c_char) -> *
 fn query_by_cid_hash_impl(args: &str) -> Result<String, String> {
     let v: Value = serde_json::from_str(args).map_err(|e| format!("invalid JSON: {}", e))?;
     let wallet = init_wallet(&v)?;
-    let cid_hash = parse_cid_hash(
-        v["cid_hash_hex"]
-            .as_str()
-            .ok_or("missing cid_hash_hex")?,
-    )?;
+    let cid_hash = parse_cid_hash(v["cid_hash_hex"].as_str().ok_or("missing cid_hash_hex")?)?;
 
     let client = LezRegistryClient::new(wallet)
         .map_err(|e| format!("LezRegistryClient::new: {}", e.message))?;
@@ -265,9 +249,7 @@ struct MetadataInputs {
 }
 
 #[no_mangle]
-pub extern "C" fn whistleblower_compute_metadata_hash(
-    args_json: *const c_char,
-) -> *mut c_char {
+pub extern "C" fn whistleblower_compute_metadata_hash(args_json: *const c_char) -> *mut c_char {
     let args = match cstr_to_str(args_json) {
         Ok(s) => s.to_owned(),
         Err(e) => return error_json(&e),
@@ -279,8 +261,7 @@ fn compute_metadata_hash_impl(args: &str) -> Result<String, String> {
     use whistleblower_core::MetadataEnvelopeV1;
     let inputs: MetadataInputs =
         serde_json::from_str(args).map_err(|e| format!("invalid JSON: {}", e))?;
-    let cid = CanonicalCid::new(inputs.cid.clone())
-        .map_err(|e| format!("invalid cid: {}", e))?;
+    let cid = CanonicalCid::new(inputs.cid.clone()).map_err(|e| format!("invalid cid: {}", e))?;
     let envelope = MetadataEnvelopeV1 {
         version: 1,
         cid,
@@ -294,7 +275,9 @@ fn compute_metadata_hash_impl(args: &str) -> Result<String, String> {
     let envelope_bytes = envelope
         .canonical_json_bytes()
         .map_err(|e| format!("envelope encode: {}", e))?;
-    let metadata_hash = envelope.metadata_hash().map_err(|e| format!("hash: {}", e))?;
+    let metadata_hash = envelope
+        .metadata_hash()
+        .map_err(|e| format!("hash: {}", e))?;
     Ok(json!({
         "success": true,
         "envelope_bytes_b64": base64_encode(&envelope_bytes),
@@ -306,8 +289,7 @@ fn compute_metadata_hash_impl(args: &str) -> Result<String, String> {
 // Tiny base64 encoder so we don't pull a base64 dep just for one call.
 // Standard MIME alphabet, no line wrapping.
 fn base64_encode(bytes: &[u8]) -> String {
-    const ALPHA: &[u8; 64] =
-        b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    const ALPHA: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let mut out = String::with_capacity((bytes.len() + 2) / 3 * 4);
     for chunk in bytes.chunks(3) {
         let b0 = chunk[0];

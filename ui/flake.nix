@@ -55,26 +55,45 @@
         };
 
         # ── Rust FFI cdylib ────────────────────────────────────────────────────
+        # The FFI has path deps on workspace siblings (../core, ../indexing,
+        # ../adapters/lez), so `src` is the whole workspace root, not just
+        # ui/ffi. cargoBuildFlags scopes the build to our cdylib so we
+        # don't pull in the guest, spike, or batch CLI.
         ffi = rustPlatform.buildRustPackage {
           pname = "whistleblower-ffi";
           version = "0.1.0";
-          src = ./ffi;
+          # IMPORTANT — known limitation:
+          #
+          # `src = ../.` (the workspace root) is needed because the FFI has
+          # path deps on ../core, ../indexing, ../adapters/lez. But nix
+          # flakes can only see files within the directory containing
+          # flake.nix, so we hit "path '/nix/store/' is not in the Nix store"
+          # at eval time.
+          #
+          # The clean fix is to move this flake.nix to the workspace root.
+          # Pending that refactor, the workaround is to:
+          #   1. Run `cp ../Cargo.lock ./Cargo.lock` (gitignored)
+          #   2. Use one of the manual cargo build paths from ui/README.md
+          #      ("Build (development, local)") instead of nix build
+          # The flake below is structurally correct — it just needs the
+          # workspace-root move to unblock the eval-time path resolution.
+          src = ../.;
 
           cargoLock = {
-            lockFile = ./ffi/Cargo.lock;
+            lockFile = ./Cargo.lock;
+            # Starting set copied from whisper-wall — they share most LEZ
+            # transitive deps. Will need updating on first nix build (nix
+            # will print the correct hash for any mismatched entries).
             outputHashes = {
-              # LEZ (nssa, wallet, sequencer_service_rpc, …)
               "amm_core-0.1.0"                          = "sha256-j0DzDvH88IUIReYi6N4FD6+mTIJOklQjaa9qjw4yHEg=";
-              # Espresso jellyfish (tag jf-crhf-v0.1.1)
               "jf-crhf-0.1.1"                           = "sha256-TUm91XROmUfqwFqkDmQEKyT9cOo1ZgAbuTDyEfe6ltg=";
-              # Espresso jellyfish (rev dc166cf)
               "jf-poseidon2-0.1.0"                      = "sha256-QeCjgZXO7lFzF2Gzm2f8XI08djm5jyKI6D8U0jNTPB8=";
-              # logos-blockchain
               "logos-blockchain-blend-crypto-0.1.2"     = "sha256-ypgXXvAUR4WbXGaOhoPy9AqTyYjqtIUye/Uyr1RF030=";
-              # Overwatch
               "overwatch-0.1.0"                         = "sha256-L7R1GdhRNNsymYe3RVyYLAmd6x1YY08TBJp4hG4/YwE=";
             };
           };
+
+          cargoBuildFlags = [ "-p" "whistleblower_ffi" ];
 
           # logos-blockchain-pol build.rs requires ZK circuit artifacts.
           LOGOS_BLOCKCHAIN_CIRCUITS = "${circuitsDir}";

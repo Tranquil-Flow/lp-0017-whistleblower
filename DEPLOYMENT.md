@@ -41,17 +41,46 @@ The local sequencer runs `RISC0_DEV_MODE=true` by default — proofs are stubbed
 
 ## LEZ devnet / testnet
 
-**Status:** TBD. The devnet RPC URL has not been wired into our `scaffold.toml` yet. To deploy:
+**Status:** Awaiting the devnet RPC URL from the Logos team (#builder-hub).
+The deployment commands are identical to localnet — only the
+`NSSA_SEQUENCER_URL` env var needs to point at the devnet endpoint.
 
-1. Edit `scaffold.toml` to point `[localnet]` at the devnet endpoint, OR
-2. Run `wallet deploy-program <bin>` directly with `NSSA_SEQUENCER_URL=https://devnet.example` (URL TBD — confirm with Logos team via #builder-hub).
-3. Capture the resulting program_id here:
-   ```
-   devnet program_id: <TBD>
-   devnet deploy block:  <TBD>
-   devnet deploy tx hash: <TBD>
-   ```
-4. Update `whistleblower-registry-idl.json` metadata if the deployed program ID differs from the local build (it shouldn't — image-hash determinism — but worth verifying).
+Once the URL is available, deploy with:
+
+```bash
+# Set the devnet endpoint (URL TBD — substitute the real one).
+export NSSA_SEQUENCER_URL="https://devnet-sequencer.logos.example"
+
+# Same deploy command as localnet (program_id is image-hash determined,
+# so it'll be the same byte-for-byte as the localnet program_id).
+lgs deploy --program-path \
+  target/riscv-guest/whistleblower-methods/whistleblower-programs/riscv32im-risc0-zkvm-elf/release/whistleblower_registry.bin
+```
+
+Then capture the deployment metadata here:
+
+```
+devnet program_id:    <copy from `lgs deploy` output>
+devnet deploy block:  <from sequencer; query via `wallet chain-info`>
+devnet deploy tx hash: <from `lgs deploy` JSON output with --json>
+```
+
+And rerun the live integration suite + `anchor_spike` against devnet
+to capture the production benchmark numbers (they'll differ from
+localnet because `RISC0_DEV_MODE=0` runs real proving):
+
+```bash
+NSSA_WALLET_HOME_DIR=$PWD/.scaffold/wallet \
+  RISC0_DEV_MODE=0 \
+  cargo test -p whistleblower-lez-adapter --release -- --ignored --nocapture
+```
+
+Then update `BENCHMARKS.md` with the resulting wall-clock + CU numbers.
+
+If the devnet program ID matches the localnet build (which it should
+since program_id is the SHA of the guest binary), the existing
+`whistleblower-registry-idl.json` is reusable as-is. If they differ
+for any reason, regenerate the IDL or re-publish.
 
 ## Verification
 

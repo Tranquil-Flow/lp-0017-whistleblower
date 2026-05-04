@@ -7,6 +7,8 @@
 #include <functional>
 
 class LogosAPI;
+class LogosAPIClient;
+class LogosObject;
 
 /**
  * WhistleblowerBackend — Qt-side controller for the LP-0017 plugin.
@@ -113,6 +115,21 @@ private:
     QJsonObject baseFfiArgs() const;
 
     LogosAPI* m_api {nullptr};
+    /// Resolved by the constructor via m_api->getClient(...). Null when the
+    /// plugin runs outside Basecamp (standalone preview app).
+    LogosAPIClient* m_storageClient {nullptr};
+    LogosAPIClient* m_deliveryClient {nullptr};
+    /// LogosObject* handles obtained via client->requestObject(...). Used as
+    /// the originObject argument to client->onEvent(...).
+    LogosObject* m_storageObject {nullptr};
+    LogosObject* m_deliveryObject {nullptr};
+
+    /// Single-flight callbacks for in-progress storage upload / delivery
+    /// publish. Cleared when the corresponding event fires (storageUploadDone
+    /// / messageSent / messageError) or when the safety timeout elapses.
+    std::function<void(QString)> m_pendingUploadCallback;
+    std::function<void(QString)> m_pendingPublishCallback;
+
     QString m_walletPath;
     QString m_sequencerUrl;
 

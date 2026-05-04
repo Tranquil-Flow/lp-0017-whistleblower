@@ -10,7 +10,15 @@
 #include <QMimeDatabase>
 #include <QMimeType>
 #include <QThreadPool>
+#include <QUrl>
+#include <QVariant>
+#include <QVariantList>
 #include <QtConcurrent/QtConcurrent>
+
+#include "logos_api.h"
+#include "logos_api_client.h"
+#include "logos_object.h"
+#include "logos_mode.h"
 
 // C FFI from ui/ffi/ — resolved at runtime via dlopen / co-located dylib.
 extern "C" {
@@ -35,7 +43,73 @@ WhistleblowerBackend::WhistleblowerBackend(LogosAPI* api, QObject* parent)
     , m_api(api)
     , m_walletPath(qEnvironmentVariable("NSSA_WALLET_HOME_DIR", ".scaffold/wallet"))
     , m_sequencerUrl(qEnvironmentVariable("NSSA_SEQUENCER_URL", "http://127.0.0.1:3040"))
-{}
+{
+    if (m_api) {
+        // Resolve LogosAPIClient handles + LogosObject* references for the two
+        // modules we depend on. Both modules are declared in manifest.json so
+        // Basecamp guarantees they're loaded before we are constructed.
+        m_storageClient = m_api->getClient("storage_module");
+        m_deliveryClient = m_api->getClient("delivery_module");
+        if (m_storageClient) {
+            m_storageObject = m_storageClient->requestObject("storage_module");
+            // Subscribe to the upload-completion event up front. The lambda
+            // captures `this` and dispatches to whichever pending upload
+            // callback is currently active (m_pendingUploadCallback).
+            if (m_storageObject) {
+                m_storageClient->onEvent(m_storageObject, "storageUploadDone",
+                    [this](const QString&, const QVariantList& data) {
+                        // storage_module emits the CID as the last QString in
+                        // the data list. Be defensive about position — log says
+                        // session id may precede it.
+                        QString cid;
+                        for (const QVariant& v : data) {
+                            QString s = v.toString();
+                            if (s.startsWith("z") || s.startsWith("bafy")) {
+                                cid = s;
+                                break;
+                            }
+                        }
+                        if (cid.isEmpty() && !data.isEmpty()) {
+                            cid = data.last().toString();
+                        }
+                        if (m_pendingUploadCallback) {
+                            auto cb = m_pendingUploadCallback;
+                            m_pendingUploadCallback = nullptr;
+                            cb(cid);
+                        }
+                    });
+            }
+        }
+        if (m_deliveryClient) {
+            m_deliveryObject = m_deliveryClient->requestObject("delivery_module");
+            if (m_deliveryObject) {
+                // Per delivery_module_plugin.h: data[0]=request id, data[1]=hash,
+                // data[2]=timestamp.
+                m_deliveryClient->onEvent(m_deliveryObject, "messageSent",
+                    [this](const QString&, const QVariantList& data) {
+                        if (m_pendingPublishCallback) {
+                            auto cb = m_pendingPublishCallback;
+                            m_pendingPublishCallback = nullptr;
+                            QString hash = data.size() > 1 ? data[1].toString() : QString();
+                            cb(hash);
+                        }
+                    });
+                // Errors short-circuit the same callback with empty string +
+                // a setError. data[2] is the error message per the header.
+                m_deliveryClient->onEvent(m_deliveryObject, "messageError",
+                    [this](const QString&, const QVariantList& data) {
+                        if (m_pendingPublishCallback) {
+                            auto cb = m_pendingPublishCallback;
+                            m_pendingPublishCallback = nullptr;
+                            QString err = data.size() > 2 ? data[2].toString() : QStringLiteral("unknown");
+                            setError("broadcast", err);
+                            cb(QString());
+                        }
+                    });
+            }
+        }
+    }
+}
 
 WhistleblowerBackend::~WhistleblowerBackend() = default;
 
@@ -205,50 +279,64 @@ bool WhistleblowerBackend::computeEnvelope(
     return true;
 }
 
-// ─── Storage / Delivery integration via LogosAPI (TODO when API surface confirmed) ───
+// ─── Storage / Delivery integration via LogosAPI ────────────────────────────
 //
-// Both methods below call into the Logos Core modules that Basecamp has
-// already loaded into this process. The exact LogosAPI invocation pattern
-// is TBD pending a worked example — whisper-wall stores `LogosAPI* m_api`
-// but doesn't actually use it (whisper-wall is on-chain-only). We need to
-// confirm one of these patterns:
+// Both methods invoke the corresponding module's Q_INVOKABLE method via
+// LogosAPIClient::invokeRemoteMethodAsync, then rely on the event handlers
+// installed in the constructor (storageUploadDone, messageSent/Error) to
+// fire the per-call callback.
 //
-//   a) m_api->getModule("storage_module") returns a QObject* on which we
-//      can use QMetaObject::invokeMethod for Q_INVOKABLE methods + connect
-//      to its signals.
-//   b) m_api exposes a higher-level wrapper (e.g. m_api->storage()) with
-//      typed methods.
-//   c) The modules are accessed through QtRemoteObjects across processes,
-//      requiring a QRemoteObjectNode.
-//
-// The headers in SPECS/refs/ confirm the storage/delivery modules expose:
-//   storage_module: uploadUrl(QUrl, int chunkSize) -> LogosResult
-//                   signal storageUploadDone(QString sessionId, QString cid)
-//   delivery_module: send(QString topic, QByteArray payload) -> LogosResult
-//                    signal messageSent(QString messageId, QString messageHash)
-//
-// For a non-blocking demo the C++ side calls the Q_INVOKABLE method, sets
-// up a QObject::connect to the corresponding "done" signal with a one-shot
-// lambda, and the lambda invokes our onComplete callback with the CID /
-// message hash extracted from the signal.
+// Single-flight guarantee: the QML's "publish" button is disabled while
+// busy, so we never have two pending upload/broadcast callbacks at once.
+// The m_pendingUploadCallback / m_pendingPublishCallback slots reflect that
+// invariant — they hold ONE callback at a time.
 
 void WhistleblowerBackend::uploadToStorage(
     const QString& filePath,
     std::function<void(QString)> onComplete)
 {
-    // TODO(Phase-1.7-runtime): replace this stub with a real call that
-    // invokes storage_module.uploadUrl(QUrl::fromLocalFile(filePath), 65536)
-    // and connects to its storageUploadDone signal. The lambda below
-    // simulates the success path so the rest of the pipeline can be
-    // exercised against a mock for now.
-    Q_UNUSED(filePath)
-    if (!m_api) {
-        setError("upload", "no LogosAPI handle — running outside Basecamp host");
+    if (!m_api || !m_storageClient || !m_storageObject) {
+        setError("upload", "storage_module not available — running outside Basecamp host?");
         onComplete(QString());
         return;
     }
-    setError("upload", "storage_module integration not yet wired — see WhistleblowerBackend.cpp TODO");
-    onComplete(QString());
+    if (m_pendingUploadCallback) {
+        setError("upload", "another upload already in flight");
+        onComplete(QString());
+        return;
+    }
+    m_pendingUploadCallback = onComplete;
+
+    // Invoke storage_module.uploadUrl(QUrl, chunkSize). The synchronous
+    // return is a LogosResult — completion comes via storageUploadDone.
+    QVariantList args{
+        QVariant::fromValue(QUrl::fromLocalFile(filePath)),
+        QVariant::fromValue(64 * 1024),
+    };
+    m_storageClient->invokeRemoteMethodAsync(
+        "storage_module", "uploadUrl", args,
+        [this](QVariant result) {
+            // result is the LogosResult of the sync call. Failure here means
+            // the upload couldn't even be queued — clear the pending callback
+            // and surface the error.
+            // We deliberately don't inspect LogosResult fields; if the upload
+            // queued OK we wait for storageUploadDone. If queueing failed,
+            // the event won't fire and we'd timeout — handled below by the
+            // safety timeout.
+            Q_UNUSED(result);
+        });
+
+    // Safety timeout: if storageUploadDone doesn't fire in 60s, clear the
+    // pending callback and surface a timeout error. Real production would
+    // want a longer timeout for big files.
+    QTimer::singleShot(60'000, this, [this]() {
+        if (m_pendingUploadCallback) {
+            auto cb = m_pendingUploadCallback;
+            m_pendingUploadCallback = nullptr;
+            setError("upload", "timed out waiting for storageUploadDone (60s)");
+            cb(QString());
+        }
+    });
 }
 
 void WhistleblowerBackend::broadcastEnvelope(
@@ -256,15 +344,36 @@ void WhistleblowerBackend::broadcastEnvelope(
     const QByteArray& envelopeBytes,
     std::function<void(QString)> onComplete)
 {
-    // TODO(Phase-1.7-runtime): same shape as uploadToStorage — invoke
-    // delivery_module.send(topic, envelopeBytes), connect messageSent.
-    Q_UNUSED(topic)
-    Q_UNUSED(envelopeBytes)
-    if (!m_api) {
-        setError("broadcast", "no LogosAPI handle");
+    if (!m_api || !m_deliveryClient || !m_deliveryObject) {
+        setError("broadcast", "delivery_module not available — running outside Basecamp host?");
         onComplete(QString());
         return;
     }
-    setError("broadcast", "delivery_module integration not yet wired");
-    onComplete(QString());
+    if (m_pendingPublishCallback) {
+        setError("broadcast", "another publish already in flight");
+        onComplete(QString());
+        return;
+    }
+    m_pendingPublishCallback = onComplete;
+
+    // delivery_module.send(topic: QString, payload: QString). Per the header
+    // the payload is a QString (base64 is fine — receivers decode), so we
+    // wrap our envelope bytes in base64 to survive QString round-trip.
+    QString payload = QString::fromLatin1(envelopeBytes.toBase64());
+    QVariantList args{topic, payload};
+    m_deliveryClient->invokeRemoteMethodAsync(
+        "delivery_module", "send", args,
+        [this](QVariant result) {
+            Q_UNUSED(result);
+        });
+
+    // Safety timeout (30s — broadcasts should be fast).
+    QTimer::singleShot(30'000, this, [this]() {
+        if (m_pendingPublishCallback) {
+            auto cb = m_pendingPublishCallback;
+            m_pendingPublishCallback = nullptr;
+            setError("broadcast", "timed out waiting for messageSent (30s)");
+            cb(QString());
+        }
+    });
 }
