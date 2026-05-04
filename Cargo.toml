@@ -4,6 +4,7 @@ members = [
     "core",
     "indexing",
     "adapters/mock",
+    "adapters/lez",
     "batch",
     "methods",
     "methods/guest",

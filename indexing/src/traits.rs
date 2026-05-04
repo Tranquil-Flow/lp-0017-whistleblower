@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use futures::stream::BoxStream;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
-use whistleblower_core::{AnchorEntry, CidHash, MetadataHash};
+use whistleblower_core::{AnchorEntry, CanonicalCid, CidHash, MetadataHash};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UploadSession {
@@ -75,15 +75,21 @@ pub trait DeliveryClient: Send + Sync {
 
 #[async_trait]
 pub trait RegistryClient: Send + Sync {
+    /// Anchor a single CID. Idempotent — re-anchoring an already-registered
+    /// CID returns the existing AnchorEntry, never errors.
     async fn anchor_one(
         &self,
-        cid_hash: CidHash,
+        cid: CanonicalCid,
         metadata_hash: MetadataHash,
     ) -> Result<AnchorEntry, AdapterError>;
+
+    /// Anchor multiple CIDs in one transaction. Idempotent per-entry.
     async fn anchor_batch(
         &self,
-        entries: Vec<(CidHash, MetadataHash)>,
+        entries: Vec<(CanonicalCid, MetadataHash)>,
     ) -> Result<Vec<AnchorEntry>, AdapterError>;
+
+    /// Query an existing entry by its hash (Storage CID -> on-chain hash).
     async fn query_by_cid_hash(
         &self,
         cid_hash: CidHash,

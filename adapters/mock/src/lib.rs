@@ -9,7 +9,9 @@ use futures::StreamExt;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
-use whistleblower_core::{AnchorEntry, CanonicalCid, CidHash, MetadataHash};
+use whistleblower_core::{
+    cid_hash as compute_cid_hash, AnchorEntry, CanonicalCid, CidHash, MetadataHash,
+};
 
 #[derive(Clone, Default)]
 pub struct MockStorageClient {
@@ -162,15 +164,16 @@ pub struct MockRegistryClient {
 impl RegistryClient for MockRegistryClient {
     async fn anchor_one(
         &self,
-        cid_hash: CidHash,
+        cid: CanonicalCid,
         metadata_hash: MetadataHash,
     ) -> Result<AnchorEntry, AdapterError> {
+        let cid_hash = compute_cid_hash(&cid);
         let mut entries = self.entries.lock().unwrap();
         if let Some(existing) = entries.get(&cid_hash) {
             return Ok(existing.clone());
         }
         let entry = AnchorEntry {
-            cid: CanonicalCid::new(format!("mock-cid-{}", entries.len())).unwrap(),
+            cid,
             cid_hash,
             metadata_hash,
             anchor_timestamp: 1,
@@ -181,11 +184,11 @@ impl RegistryClient for MockRegistryClient {
 
     async fn anchor_batch(
         &self,
-        entries_in: Vec<(CidHash, MetadataHash)>,
+        entries_in: Vec<(CanonicalCid, MetadataHash)>,
     ) -> Result<Vec<AnchorEntry>, AdapterError> {
         let mut out = Vec::with_capacity(entries_in.len());
-        for (cid_hash, metadata_hash) in entries_in {
-            out.push(self.anchor_one(cid_hash, metadata_hash).await?);
+        for (cid, metadata_hash) in entries_in {
+            out.push(self.anchor_one(cid, metadata_hash).await?);
         }
         Ok(out)
     }
