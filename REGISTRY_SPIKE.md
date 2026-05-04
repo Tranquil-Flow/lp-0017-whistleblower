@@ -1,44 +1,79 @@
-# Registry Idempotency Spike
+# Registry Idempotency Spike — PASSED
 
-Status: partial local reference model complete; real SPEL/LEZ account pattern still unproven.
+Status: **PASSED** end-to-end against a real LEZ sequencer (2026-05-04).
 
-What is proven in this workspace:
+## What's proven
 
-- `RegistryState::anchor_one` creates the first entry for a CID hash.
-- A duplicate `anchor_one` for the same CID returns success and leaves the original entry unchanged.
-- `anchor_batch` with 10 new CIDs succeeds in one call.
-- `anchor_batch` with mixed existing/new CIDs succeeds, skips existing entries, and only creates missing entries.
-- `RegistryInstruction::{AnchorOne, AnchorBatch}` Borsh-serializes cleanly for the future guest/host boundary.
-- `RegistryState::apply` executes those instruction envelopes while preserving duplicate-safe semantics.
+The deployed `whistleblower-registry` LEZ program correctly implements the
+duplicate-safe registry semantics LP-0017 requires:
 
-Tests:
+1. ✅ **First `anchor_one(cid_a)` creates the entry.**
+   Registry PDA is claimed by the program via `Claim::Pda(seed)`, state is
+   populated with one `AnchorEntry`.
+
+2. ✅ **Second `anchor_one(cid_a)` is a no-op success.**
+   No InvalidProgramBehavior, state unchanged, original `anchor_timestamp`
+   preserved (re-submission with newer timestamp does NOT overwrite).
+
+3. ✅ **`anchor_batch([cid_a, cid_b])` with mixed existing/new is partial-success.**
+   `cid_a` is skipped (already present), `cid_b` is added — single tx, no error.
+
+4. ✅ **`anchor_batch(10 fresh CIDs)` lands in one transaction.**
+   Spec line 41 ("≥10 CIDs per batch transaction") satisfied. Entry count
+   jumps by exactly 10.
+
+## How to run
 
 ```bash
-cargo test -p whistleblower-core --test registry_idempotency_spike
-cargo test -p whistleblower-core --test registry_instruction
+cd ~/Projects/logos-basecamp/lp-0017-whistleblower/whistleblower
+lgs localnet start
+lgs build
+lgs deploy --program-path target/riscv-guest/whistleblower-methods/whistleblower-programs/riscv32im-risc0-zkvm-elf/release/whistleblower_registry.bin
+cargo build -p anchor-spike --release
+NSSA_WALLET_HOME_DIR=$PWD/.scaffold/wallet ./target/release/anchor_spike
 ```
 
-Tooling status:
+The spike is idempotent across runs — it measures deltas from the current
+registry state, so re-running it just adds more CIDs to the same PDA.
 
-- `lgs` can be installed in this Linux container by setting `TMPDIR` and `CARGO_TARGET_DIR` outside `/tmp`.
-- `spel` installation was attempted with rustc 1.85 and then rustc 1.95 via rustup.
-- The rustc 1.85 attempt failed because current transitive dependencies require newer Rust.
-- The rustc 1.95 attempt progressed into compilation but was killed with exit code 137 while compiling the large Logos dependency graph, likely memory pressure in this 16GB container.
+## Architecture decisions confirmed
 
-Why this is not the final Task 1.0B gate:
+- **Registry storage:** Single registry-root PDA holding `Vec<AnchorEntry>`.
+  PDA seed = `REGISTRY_PDA_SEED_BYTES` (constant in `whistleblower-core`).
+  Bucketing is a follow-up only if entry count grows large.
 
-This commit proves the desired registry semantics and shared guest-input encoding in the Rust model, not the actual SPEL account creation behavior. The critical unknown remains whether SPEL can implement one-entry-account-per-CID without `#[account(init)]` rejecting already-initialized duplicate accounts before handler logic can no-op.
+- **Claim semantics:** `AccountPostState::new_claimed_if_default(post, Claim::Pda(seed))`.
+  - First call: PDA in default state → claim emitted, runtime assigns
+    program ownership.
+  - Subsequent calls: PDA already owned → no claim emitted (re-claiming a
+    non-default account would fail nssa validation).
+  - Critically NOT `Claim::Authorized` — that requires signer authorization,
+    which we don't have for the PDA. Lost ~30 minutes here; an upstream docs
+    PR would help next builder.
 
-Next steps for the real gate:
+- **Wire format:** Host borsh-encodes `RegistryInstruction` and sends it
+  as `Vec<u8>`; guest reads via `read_nssa_inputs::<Vec<u8>>` then
+  borsh-decodes. Round-trip clean.
 
-1. Run in the Logos toolchain environment where `lgs`, `spel`, RISC Zero, and the
-   local LEZ sequencer are available.
-2. Port `RegistryState` semantics into `methods/guest/src/bin/whistleblower_registry.rs`.
-3. Prove duplicate-safe behavior against local LEZ accounts:
-   - first `anchor_one` creates entry
-   - duplicate `anchor_one` is success/no-op
-   - 10-CID `anchor_batch` succeeds
-   - mixed existing/new `anchor_batch` succeeds
-4. If SPEL rejects duplicate initialized accounts before handler logic, switch to
-   manually validated mutable accounts or fixed bucket accounts and update
-   `ARCHITECTURE.md` / `TASKS.md` before building CLI or UI flows.
+- **State format:** `RegistryStateOnChain { entries: Vec<AnchorEntry> }`,
+  borsh-encoded into the PDA's `account.data` field.
+
+## What's NOT yet proven (deferred to Task 1.1 proper)
+
+- Per-CID PDA-per-account variant (vs single root PDA) — current shape works
+  for spike, may need bucketing later if entry count grows large.
+- Compute Unit benchmarks for single vs 50-CID anchor (Phase 1.1.8).
+- IDL generation via `spel generate-idl` against our raw-nssa guest. SPEL
+  macros aren't used in the guest because spel-framework's `host` feature on
+  `nssa_core` pulls bonsai-sdk transitively into the riscv32im build, which
+  fails to cross-compile (ring/Apple Metal). `spel generate-idl` only scans
+  `#[lez_program]` annotations, so we'll need to either add SPEL wrapper
+  macros (and figure out the bonsai issue), hand-write the IDL JSON, or
+  derive it from `RegistryInstruction` programmatically.
+
+## Reproduced artifacts
+
+- `methods/guest/src/bin/whistleblower_registry.rs` — the SPEL-free LEZ guest
+- `core/src/lib.rs` — shared `RegistryInstruction` + `REGISTRY_PDA_SEED_BYTES`
+- `anchor_spike/src/main.rs` — host runner with tx-confirmation polling
+- This file — spike documentation

@@ -6,6 +6,10 @@ use std::collections::BTreeMap;
 pub const DEFAULT_CONTENT_TOPIC: &str = "/lp0017-whistleblower/1/cids/json";
 pub const CID_HASH_DOMAIN: &str = "lp0017:cid:v1\0";
 
+/// PDA seed for the single registry-root account (32 bytes). Shared between
+/// host and guest so both compute the same PDA from the same program ID.
+pub const REGISTRY_PDA_SEED_BYTES: [u8; 32] = [0xAB; 32];
+
 #[derive(
     Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, BorshSerialize, BorshDeserialize,
 )]
