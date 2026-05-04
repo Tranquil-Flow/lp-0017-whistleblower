@@ -86,3 +86,44 @@ async fn lez_adapter_anchor_batch_idempotent() {
     assert_eq!(entries[0].cid, cid_a);
     assert_eq!(entries[1].cid, cid_b);
 }
+
+/// Spec line 41: "accept batch submissions of at least 10 CIDs per transaction".
+/// We push that to 50 to confirm there's real headroom — if 50 works, 10 is
+/// safely under the cap. Captures elapsed time so it can feed BENCHMARKS.md.
+#[tokio::test]
+#[ignore = "requires lgs localnet + deployed program + NSSA_WALLET_HOME_DIR"]
+async fn lez_adapter_anchor_50_cids_in_one_tx() {
+    let wallet_core = Arc::new(
+        WalletCore::from_env().expect("WalletCore::from_env failed — is NSSA_WALLET_HOME_DIR set?"),
+    );
+    let client = LezRegistryClient::new(wallet_core).expect("LezRegistryClient::new");
+    let suffix = run_suffix();
+
+    let entries: Vec<(CanonicalCid, MetadataHash)> = (0..50)
+        .map(|i| {
+            (
+                CanonicalCid::new(format!("bafy-adapter-50-{suffix}-{i:02}")).unwrap(),
+                MetadataHash([(i % 256) as u8; 32]),
+            )
+        })
+        .collect();
+    let expected_count = entries.len();
+
+    let started = std::time::Instant::now();
+    let result = client
+        .anchor_batch(entries.clone())
+        .await
+        .expect("anchor_batch(50)");
+    let elapsed = started.elapsed();
+
+    assert_eq!(
+        result.len(),
+        expected_count,
+        "all 50 entries should be returned"
+    );
+    eprintln!(
+        "lez_adapter_anchor_50_cids_in_one_tx: 50-CID batch wall-clock = {:?} ({:.1}ms/CID amortized)",
+        elapsed,
+        elapsed.as_millis() as f64 / 50.0
+    );
+}

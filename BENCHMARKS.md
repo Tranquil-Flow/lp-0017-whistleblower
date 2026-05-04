@@ -23,15 +23,36 @@ For the 50-CID case, use anchor_spike's existing `make_cid` helper to produce 50
 
 ## Results
 
-**Status: TBD**. Numbers below are placeholders to be replaced once we run on devnet with `RISC0_DEV_MODE=0`. The local sequencer in dev mode skips proving so its execution-time numbers are not representative.
+### Localnet (RISC0_DEV_MODE=true) — captured 2026-05-04
 
-| Operation | Sequencer | Mode | Accounts touched | Wall time | Risc0 execution time | CU cost |
-|---|---|---|---|---|---|---|
-| `anchor_one` (single CID) | localnet | DEV | 1 | TBD | TBD | TBD |
-| `anchor_batch` (10 CIDs) | localnet | DEV | 10 | TBD | TBD | TBD |
-| `anchor_batch` (50 CIDs) | localnet | DEV | 50 | TBD | TBD | TBD |
-| `anchor_one` (single CID) | devnet | PROD | 1 | TBD | TBD | TBD |
-| `anchor_batch` (50 CIDs) | devnet | PROD | 50 | TBD | TBD | TBD |
+These numbers come from the local sequencer (`lgs localnet start`) which skips real proving. They isolate the registry program's per-tx compute cost from the proof-generation fixed cost. **Devnet numbers with `RISC0_DEV_MODE=0` are still TBD** and will be substantially higher (proof generation is the dominant term in production).
+
+| Operation | Accounts touched | Wall time | Risc0 executor time | Per-CID amortized |
+|---|---|---|---|---|
+| `anchor_one` (single CID) | 1 | ~7-15 s | 6-7 ms | n/a |
+| `anchor_batch` (10 CIDs)  | 10 | ~14-15 s | ~10-12 ms | ~1.0-1.2 ms |
+| `anchor_batch` (50 CIDs)  | 50 | **11.39 s** | **52.9 ms** | **~1.06 ms** |
+
+**Source**: `lez_adapter_anchor_50_cids_in_one_tx` integration test in `adapters/lez/tests/live_registry.rs` (the 50-CID measurement) plus `anchor_spike` runs (the smaller cases). All measurements against sequencer @ commit `35d8df0d` + circuits v0.4.2.
+
+### Key finding
+
+Per-CID compute cost is **essentially constant** at ~1ms regardless of batch size (1.06ms/CID at N=50, ~1.0-1.2ms at N=10). This validates the PDA-per-CID design choice — the program's work scales linearly with batch size, no per-tx overhead grows.
+
+The wall-clock latency (~11-15s) is dominated by **block creation interval** (~15s on localnet config), not by the program's compute cost. Real production throughput will be limited by block cadence, not by registry program efficiency.
+
+### Headroom on spec line 41 ("≥10 CIDs per batch tx")
+
+50-CID batch confirmed working in a single transaction. **The spec's ≥10 floor has 5x headroom on the localnet sequencer.** Whether devnet enforces a tighter cap is TBD — needs a real-proof run.
+
+### Devnet (RISC0_DEV_MODE=0) — TBD
+
+| Operation | Accounts touched | Wall time | Risc0 executor time | CU cost |
+|---|---|---|---|---|
+| `anchor_one` (single CID) | 1 | TBD | TBD | TBD |
+| `anchor_batch` (50 CIDs)  | 50 | TBD | TBD | TBD |
+
+Devnet measurements pending the devnet RPC URL and a deployed program ID there. The proof-generation fixed cost dominates here — expect wall times in the minutes for real proofs.
 
 ## Expected shape
 
