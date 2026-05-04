@@ -100,12 +100,68 @@ pub struct AnchorBatchOutcome {
     pub skipped_existing: usize,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+pub enum RegistryInstruction {
+    AnchorOne {
+        cid: CanonicalCid,
+        metadata_hash: MetadataHash,
+        anchor_timestamp: u64,
+    },
+    AnchorBatch {
+        entries: Vec<(CanonicalCid, MetadataHash)>,
+        anchor_timestamp: u64,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RegistryOutcome {
+    AnchorOne(AnchorOneOutcome),
+    AnchorBatch(AnchorBatchOutcome),
+}
+
+impl RegistryOutcome {
+    pub fn into_one(self) -> Option<AnchorOneOutcome> {
+        match self {
+            Self::AnchorOne(outcome) => Some(outcome),
+            Self::AnchorBatch(_) => None,
+        }
+    }
+
+    pub fn into_batch(self) -> Option<AnchorBatchOutcome> {
+        match self {
+            Self::AnchorOne(_) => None,
+            Self::AnchorBatch(outcome) => Some(outcome),
+        }
+    }
+}
+
 #[derive(Debug, Default, Clone)]
 pub struct RegistryState {
     entries: BTreeMap<CidHash, AnchorEntry>,
 }
 
 impl RegistryState {
+    pub fn apply(
+        &mut self,
+        instruction: RegistryInstruction,
+    ) -> Result<RegistryOutcome, CoreError> {
+        match instruction {
+            RegistryInstruction::AnchorOne {
+                cid,
+                metadata_hash,
+                anchor_timestamp,
+            } => self
+                .anchor_one(cid, metadata_hash, anchor_timestamp)
+                .map(RegistryOutcome::AnchorOne),
+            RegistryInstruction::AnchorBatch {
+                entries,
+                anchor_timestamp,
+            } => self
+                .anchor_batch(entries, anchor_timestamp)
+                .map(RegistryOutcome::AnchorBatch),
+        }
+    }
+
     pub fn anchor_one(
         &mut self,
         cid: CanonicalCid,
