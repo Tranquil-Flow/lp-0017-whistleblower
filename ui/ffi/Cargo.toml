@@ -1,0 +1,19 @@
+[package]
+name = "whistleblower_ffi"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+
+[lib]
+crate-type = ["cdylib", "staticlib"]
+
+[dependencies]
+document-indexing = { path = "../../indexing" }
+whistleblower-core = { path = "../../core" }
+whistleblower-lez-adapter = { path = "../../adapters/lez" }
+wallet.workspace = true
+borsh.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+hex.workspace = true
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync"] }

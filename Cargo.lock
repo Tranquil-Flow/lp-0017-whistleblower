@@ -7708,6 +7708,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "whistleblower_ffi"
+version = "0.1.0"
+dependencies = [
+ "borsh",
+ "document-indexing",
+ "hex",
+ "serde",
+ "serde_json",
+ "tokio",
+ "wallet",
+ "whistleblower-core",
+ "whistleblower-lez-adapter",
+]
+
+[[package]]
 name = "widestring"
 version = "1.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"

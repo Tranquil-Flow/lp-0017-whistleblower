@@ -9,6 +9,7 @@ members = [
     "methods",
     "methods/guest",
     "anchor_spike",
+    "ui/ffi",
 ]
 
 [workspace.package]
