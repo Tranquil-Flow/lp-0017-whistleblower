@@ -15,15 +15,24 @@
       inputs.logos-nix.follows = "logos-nix";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    # Provides the built liblogos_sdk.a + headers for the Qt plugin's
+    # LogosAPI consumer code (LogosAPIClient::requestObject etc.).
+    logos-cpp-sdk = {
+      url = "github:logos-co/logos-cpp-sdk";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
-  outputs = { self, nixpkgs, logos-nix, rust-overlay, flake-utils, nix-bundle-lgx }:
+  outputs = { self, nixpkgs, logos-nix, rust-overlay, flake-utils, nix-bundle-lgx, logos-cpp-sdk }:
     flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = import nixpkgs {
           inherit system;
           overlays = [ rust-overlay.overlays.default ];
         };
+
+        # Built logos-cpp-sdk static library + headers (provides liblogos_sdk.a).
+        cppSdk = logos-cpp-sdk.packages.${system}.logos-cpp-sdk;
 
         rustToolchain = pkgs.rust-bin.stable.latest.default;
 
@@ -59,6 +68,17 @@
           url = "https://github.com/logos-blockchain/logos-execution-zone.git";
           rev = "35d8df0d031315219f94d1546ceb862b0e5b208f";
           hash = "sha256-j0DzDvH88IUIReYi6N4FD6+mTIJOklQjaa9qjw4yHEg=";
+        };
+
+        # ── Logos C++ SDK headers (LogosAPI, LogosAPIClient, LogosObject) ────
+        # Needed by the Qt plugin to call into storage_module / delivery_module
+        # via the LogosAPI consumer interface. Pinned to the same rev that
+        # logos-liblogos-portable was built against (so QtRemoteObjects
+        # protocol versions match).
+        cppSdkSrc = pkgs.fetchgit {
+          url = "https://github.com/logos-co/logos-cpp-sdk.git";
+          rev = "2a21637e0238b4e629f4b707d13f0b803810cc7d";
+          hash = "sha256-XrYR9l3YZSfX/f90Fsedzz3XZufWfP75OaJQnHIH29Q=";
         };
 
         # ── Rust FFI cdylib ──────────────────────────────────────────────────
@@ -122,11 +142,33 @@
           buildInputs = with pkgs.qt6; [
             qtbase
             qtdeclarative
+            qtremoteobjects  # used by liblogos_sdk for inter-process IPC
           ];
 
           cmakeFlags = [
             "-DWHISTLEBLOWER_FFI_LIB_DIR=${ffi}/lib"
+            "-DLOGOS_CPP_SDK_ROOT=${cppSdk}"
           ];
+
+          # The built SDK has both headers and liblogos_sdk.a in $cppSdk.
+          # CMakeLists.txt picks up the headers via this env var (mirrors
+          # whisper-wall's pattern); we also need to link the static lib
+          # explicitly — that's added below in postPatch.
+          LOGOS_CPP_SDK_ROOT = "${cppSdk}";
+
+          # Patch CMakeLists.txt to link liblogos_sdk.a — whisper-wall's
+          # CMakeLists doesn't do this because their plugin only uses
+          # LogosAPI* as an opaque pointer. Our plugin actually calls
+          # methods on it so we need the symbol implementations.
+          postPatch = ''
+            # For both the plugin and the standalone preview app targets.
+            for tgt in whistleblower_plugin whistleblower_app; do
+              echo "
+            target_link_libraries($tgt PRIVATE
+              ${cppSdk}/lib/liblogos_sdk.a
+            )" >> CMakeLists.txt
+            done
+          '';
 
           installPhase = ''
             runHook preInstall

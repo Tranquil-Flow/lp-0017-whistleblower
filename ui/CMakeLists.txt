@@ -22,7 +22,7 @@ if(DEFINED ENV{LOGOS_MODULE_BUILDER_ROOT})
 else()
     set(CMAKE_AUTOMOC ON)
 
-    find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets Quick QuickWidgets Qml Concurrent)
+    find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets Quick QuickWidgets Qml Concurrent RemoteObjects)
 
     # Location of the compiled Rust cdylib (build with: cargo build --release in ui/ffi/).
     # Override via -DWHISTLEBLOWER_FFI_LIB_DIR=... or set env var of same name.
@@ -68,7 +68,7 @@ else()
     target_link_directories(${PLUGIN_TARGET} PRIVATE "${WHISTLEBLOWER_FFI_LIB_DIR}")
 
     target_link_libraries(${PLUGIN_TARGET} PRIVATE
-        Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Quick Qt6::QuickWidgets
+        Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Quick Qt6::QuickWidgets Qt6::RemoteObjects
         Qt6::Qml Qt6::Concurrent
         whistleblower_ffi
     )
@@ -88,7 +88,15 @@ else()
     install(TARGETS ${PLUGIN_TARGET}
         LIBRARY DESTINATION lib
     )
-    install(FILES "${WHISTLEBLOWER_FFI_LIB_DIR}/libwhistleblower_ffi.so"
+    # Pick the right shared-lib extension per host OS.
+    if(APPLE)
+        set(WHISTLEBLOWER_FFI_SUFFIX "dylib")
+    elseif(WIN32)
+        set(WHISTLEBLOWER_FFI_SUFFIX "dll")
+    else()
+        set(WHISTLEBLOWER_FFI_SUFFIX "so")
+    endif()
+    install(FILES "${WHISTLEBLOWER_FFI_LIB_DIR}/libwhistleblower_ffi.${WHISTLEBLOWER_FFI_SUFFIX}"
         DESTINATION lib
     )
 
@@ -119,7 +127,7 @@ else()
     target_link_directories(${APP_TARGET} PRIVATE "${WHISTLEBLOWER_FFI_LIB_DIR}")
 
     target_link_libraries(${APP_TARGET} PRIVATE
-        Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Quick Qt6::QuickWidgets
+        Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Quick Qt6::QuickWidgets Qt6::RemoteObjects
         Qt6::Qml Qt6::Concurrent
         whistleblower_ffi
     )

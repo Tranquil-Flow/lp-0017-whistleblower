@@ -10,3 +10,4 @@
 Cargo.lock.bak
 /artifacts/
 ui/Cargo.lock
+/dist/

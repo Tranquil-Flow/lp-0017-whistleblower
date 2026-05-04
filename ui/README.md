@@ -4,61 +4,65 @@ Qt6 + QML + Rust FFI plugin for the Logos Basecamp app. Lets a user pick a
 document, upload it to Logos Storage, broadcast the `(CID, metadata)`
 envelope over Logos Delivery, and anchor the CID on the LEZ registry.
 
-## Status
-
-**Scaffold**, not yet end-to-end functional. Modeled on `whisper-wall/ui/`
-which is the canonical reference for this pattern.
+## Status — built end-to-end
 
 | Component | State |
 |---|---|
 | `manifest.json` + `metadata.json` | ✅ Configured for `whistleblower` plugin name + `storage_module`/`delivery_module` deps |
 | `qml/Main.qml` | ✅ File picker + metadata form + 4-stage progress bar + Publish/Anchor buttons |
-| `ffi/` (Rust C ABI) | ✅ Compiles + 4 unit tests pass. Three exported FFI calls: `whistleblower_anchor_one`, `whistleblower_query_by_cid`, `whistleblower_compute_metadata_hash` |
-| `src/WhistleblowerPlugin.{h,cpp}` | ✅ Same shape as `WhisperWallPlugin` — Qt plugin entry that constructs the backend + QQuickWidget |
-| `src/WhistleblowerBackend.{h,cpp}` | 🟡 Shape complete. `anchorLast()` calls the Rust FFI cleanly. `uploadToStorage()` and `broadcastEnvelope()` are STUBBED — they emit a clear "not yet wired" error. See TODO(Phase-1.7-runtime) markers. |
+| `ffi/` (Rust C ABI) | ✅ 4 unit tests pass. Three exported FFI calls: `whistleblower_anchor_one`, `whistleblower_query_by_cid`, `whistleblower_compute_metadata_hash`. Builds via `cargo build --release -p whistleblower_ffi` AND via `nix build .#ffi` (workspace-root flake). |
+| `src/WhistleblowerPlugin.{h,cpp}` | ✅ Standard Qt plugin entry |
+| `src/WhistleblowerBackend.{h,cpp}` | ✅ **Real LogosAPI integration** — uses `m_api->getClient()` → `requestObject()` → `onEvent()` for storage/delivery modules. Calls `invokeRemoteMethodAsync` for `uploadUrl` / `send`. Single-flight callbacks with safety timeouts. |
 | `src/main.cpp` | ✅ Standalone preview app for manual UI iteration without Basecamp |
-| `CMakeLists.txt` | ✅ Builds the Qt plugin + a standalone preview app, linking against the Rust FFI cdylib |
-| `flake.nix` | ✅ Nix package + .lgx bundle. Cargo-lock hashes need recomputing on first build (see comment in flake.nix) |
+| `CMakeLists.txt` (workspace root: `../`) | ✅ Builds Qt plugin + preview app, links Rust FFI cdylib + liblogos_sdk.a, finds Qt6 RemoteObjects |
+| `../flake.nix` | ✅ **Workspace-root flake builds the full chain.** `.#ffi`, `.#plugin`, `.#lgx`, `.#install` all work. Built `dist/whistleblower-plugin.lgx` (2.4MB) end-to-end on m4pro. |
 
-## What's left for "demo works end-to-end"
+## What's left
 
-1. **Wire `uploadToStorage()` and `broadcastEnvelope()`** to actually call
-   the storage_module / delivery_module via `LogosAPI`. Pattern TBD —
-   whisper-wall doesn't use the LogosAPI handle (it's on-chain only),
-   so we don't have a worked example. Probable shape:
-   ```cpp
-   QObject* storage = m_api->getModule("storage_module");
-   connect(storage, SIGNAL(storageUploadDone(QString, QString)),
-           this, [...](QString sessionId, QString cid) { ... });
-   QMetaObject::invokeMethod(storage, "uploadUrl",
-       Q_ARG(QUrl, QUrl::fromLocalFile(filePath)),
-       Q_ARG(int, 65536));
-   ```
-   Need to read `LogosAPI`'s actual interface — see
-   `logos-co/logos-cpp-sdk` or build the Basecamp host with an inspector
-   on first launch.
+1. ✅ ~~Wire `uploadToStorage()` and `broadcastEnvelope()`~~ — DONE.
+   Backend uses `LogosAPIClient::invokeRemoteMethodAsync` for
+   `uploadUrl` / `send` and subscribes via `onEvent` for the
+   completion signals.
 
-2. **Recompute the FFI cargo-lock hashes** in `flake.nix` for our
-   transitive deps (we have `document-indexing` instead of whisper-wall's
-   `spel-client-gen`, so the hashes differ). Run `nix build .#ffi` once
-   and copy the hashes nix complains about into the `outputHashes` map.
+2. ✅ ~~Recompute the FFI cargo-lock hashes~~ — DONE.
+   `logos-blockchain-blend-crypto-0.1.2` updated to match our pinned
+   rev. Set captured in `flake.nix`.
 
-3. **Build + install via nix** (must be done on a host with the Logos
-   toolchain — m4pro is set up):
+3. ✅ ~~Build + install via nix~~ — DONE. `nix build .#lgx` produces
+   `dist/whistleblower-plugin.lgx` (2.4MB, darwin-arm64 variant with
+   both .dylibs + manifest, all references portable).
+
+4. **Wire `whistleblower-batch`** to drop `--mock-delivery` once the
+   real Logos Delivery integration is in. Two options:
+   a) Add a parallel Rust adapter (`whistleblower-logos-adapter` —
+      see `adapters/logos/`) that drives `logos_host` as a subprocess
+      for headless use.
+   b) Restructure batch CLI to be a Basecamp plugin component that
+      reuses the same LogosAPI handle the UI plugin gets.
+
+5. **Test the .lgx in a real Basecamp instance.** The .lgx is at
+   `dist/whistleblower-plugin.lgx`. Load steps:
    ```bash
-   ssh m4pro
-   cd ~/whistleblower-ui
-   nix build ./ui#install
+   # Determine where Basecamp expects plugin .lgx files. Whisper-wall
+   # uses ~/.local/share/Logos/LogosBasecampDev/plugins/<name>/.
+   # For the .lgx self-contained format, drop into the plugin manager
+   # via Basecamp UI's "Install plugin" → select dist/whistleblower-plugin.lgx.
+
+   # Set required env vars before launching Basecamp:
+   export NSSA_WALLET_HOME_DIR=/path/to/seeded/wallet
+   export NSSA_SEQUENCER_URL=http://127.0.0.1:3040
+   /path/to/logos-basecamp.AppImage
    ```
+   This validates the LogosAPI integration end-to-end (storage upload →
+   delivery broadcast → registry anchor) using real Basecamp-loaded
+   `storage_module` and `delivery_module`.
 
-4. **Wire `whistleblower-batch`** to drop `--mock-delivery` once the real
-   Logos Delivery integration is in. The CLI should subscribe directly
-   via the Rust delivery adapter (a counterpart to LezRegistryClient
-   that wraps a logos_host process — or via a shared LogosAPI handle
-   exposed by Basecamp).
+6. **Devnet deployment + RISC0_DEV_MODE=0 numbers.** Awaits the Logos
+   team's devnet RPC URL. See `DEPLOYMENT.md` for the commands ready
+   to go.
 
-5. **Re-record the demo video** showing real upload → broadcast → batch
-   anchor → registry query, with `RISC0_DEV_MODE=0` visible.
+7. **Record the narrated video demo.** Script in `DEMO.md`. Recording
+   happens after #5 + #6.
 
 ## Build (development, local)
 
@@ -78,14 +82,28 @@ The standalone app lets you exercise the QML + Backend signal flow without
 a Basecamp host. The Storage/Delivery integration will fail-fast with a
 clear error since `LogosAPI` is null in standalone mode.
 
-## Build (nix, production, on m4pro)
+## Build (nix, production)
+
+The flake is at the workspace root (NOT `ui/`) because the FFI has
+path-deps on `core`, `indexing`, `adapters/lez` that nix needs in scope.
 
 ```bash
-ssh m4pro
-git clone <this-repo> wb && cd wb/ui
-nix build           # builds plugin + ffi
-nix build .#lgx     # produces a portable .lgx for distribution
-nix run .#install   # copies into ~/.local/share/Logos/LogosBasecampDev/plugins/whistleblower/
+ssh m4pro                                   # or any host with nix + Logos toolchain
+git clone <this-repo> wb && cd wb           # workspace root
+nix build .#ffi      # Rust cdylib (~3-4 min)
+nix build .#plugin   # Qt plugin + standalone preview app
+nix build .#lgx      # portable .lgx package — the spec deliverable
+nix run  .#install   # copies plugin into Basecamp dev plugin dir
+```
+
+Verified end-to-end on m4pro 2026-05-04:
+- `.#ffi`     → `lib/libwhistleblower_ffi.dylib` (5.6MB)
+- `.#plugin`  → `lib/libwhistleblower_plugin.dylib` (467KB) + `bin/whistleblower_app` (preview)
+- `.#lgx`     → `whistleblower-plugin.lgx` (2.4MB, darwin-arm64 variant)
+
+The .lgx is then SCP'd back to the host machine for distribution:
+```bash
+scp m4pro:/nix/store/<hash>-whistleblower-plugin-lgx-0.1.0/whistleblower-plugin.lgx dist/
 ```
 
 ## Layout
