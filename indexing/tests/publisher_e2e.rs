@@ -3,7 +3,6 @@
 use document_indexing::{MetadataInputs, Publisher};
 use std::path::PathBuf;
 use std::sync::Arc;
-use tokio::join;
 use whistleblower_core::{cid_hash, CanonicalCid};
 use whistleblower_mock_adapter::{
     MockDeliveryClient, MockRegistryClient, MockStorageClient,
