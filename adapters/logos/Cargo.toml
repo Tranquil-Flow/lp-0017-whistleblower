@@ -1,0 +1,21 @@
+[package]
+name = "whistleblower-logos-adapter"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+description = "Real Logos Storage + Delivery adapters that drive logoscore as a subprocess"
+
+[dependencies]
+async-trait.workspace = true
+document-indexing = { path = "../../indexing" }
+whistleblower-core = { path = "../../core" }
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio = { version = "1", features = ["process", "io-util", "rt", "sync", "time"] }
+tracing = { version = "0.1", optional = true }
+
+[features]
+default = []
+# Enables the `tracing` instrumentation for cross-process event observation.
+tracing = ["dep:tracing"]

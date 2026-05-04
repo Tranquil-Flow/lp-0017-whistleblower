@@ -8,3 +8,4 @@
 # lgs scaffold runtime state (sequencer wallets, sequencer cache)
 .scaffold/
 Cargo.lock.bak
+/artifacts/

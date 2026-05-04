@@ -6,16 +6,6 @@ use std::collections::BTreeMap;
 pub const DEFAULT_CONTENT_TOPIC: &str = "/lp0017-whistleblower/1/cids/json";
 pub const CID_HASH_DOMAIN: &str = "lp0017:cid:v1\0";
 
-/// Deprecated — was the seed for the single registry-root PDA in the v1
-/// (root-PDA) design. The current PDA-per-CID design uses each entry's
-/// own `cid_hash` as the seed (`PdaSeed::new(cid_hash.0)`), so this
-/// constant is no longer used in production code paths. Kept to preserve
-/// the historical spike binary and to avoid breaking external callers.
-#[deprecated(
-    note = "v1 root-PDA design replaced by PDA-per-CID; derive seed from cid_hash instead"
-)]
-pub const REGISTRY_PDA_SEED_BYTES: [u8; 32] = [0xAB; 32];
-
 #[derive(
     Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, BorshSerialize, BorshDeserialize,
 )]
