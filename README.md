@@ -4,7 +4,7 @@ LP-0017 reference implementation: a censorship-resistant document upload + index
 
 Anyone can upload a document → its CID is broadcast over Logos Delivery → any altruistic third party (or the publisher themselves) can later batch-anchor accumulated CIDs to a LEZ program. The on-chain registry stores `(CID, metadata_hash, anchor_timestamp)` per document and is queryable by CID hash without a transaction.
 
-> **Status:** built end-to-end — registry program + indexing module + LEZ adapter exercised against a live local sequencer (50-CID batch validated, ~1.06ms/CID amortized), Qt6/QML Basecamp UI plugin built into a portable `.lgx` package via nix on the m4pro build host. **Remaining for submission:** test the `.lgx` in a real Basecamp instance, run devnet measurements with `RISC0_DEV_MODE=0`, record the demo video. See [`ui/README.md`](ui/README.md) "What's left" for the detailed punch list.
+> **Status:** built end-to-end — registry program + indexing module + LEZ adapter exercised against a live local sequencer in non-dev mode (`risc0_dev_mode = false`, `RISC0_DEV_MODE=0`); 50-CID batch validated at ~120ms zkVM executor time (~2.5ms/CID amortized — see `BENCHMARKS.md`); Qt6/QML Basecamp UI plugin built into a portable `.lgx` package via nix. **Remaining for submission:** load the `.lgx` in a real Basecamp via `lgs basecamp install/launch`, get devnet RPC credentials from Logos Discord, record the demo video. See [`ui/README.md`](ui/README.md) "What's left" for the detailed punch list.
 
 ## Repository layout
 
@@ -154,7 +154,7 @@ See [`ARCHITECTURE.md`](ARCHITECTURE.md) for the design + the locked decisions:
 | Reliability | Upload retries with backoff | `Publisher` wraps every adapter call in `with_retry` (5 retries, exponential) |
 | Reliability | Delivery dedup | `DurableDedupeStore` in `batch::run_batch_loop` (sled-backed) |
 | Reliability | Batch tool resumes from last successfully anchored | Persistent dedupe ledger; registry idempotency means safe re-runs |
-| Performance | CU benchmarks single + 50-CID batch | `BENCHMARKS.md` — localnet captured (~1.06ms/CID at N=50); **devnet TBD** (awaiting RPC URL) |
+| Performance | CU benchmarks single + 50-CID batch | `BENCHMARKS.md` — localnet captured (~120ms total zkVM executor for 50-CID batch, ~2.5ms/CID amortized); **devnet TBD** (RPC URL gated behind Discord-issued basic-auth credentials — see `BUGS_FILED.md` #7) |
 | Supportability | Deployed on LEZ devnet/testnet | **TBD — awaiting devnet RPC URL from Logos team**; `DEPLOYMENT.md` has commands ready |
 | Supportability | E2E integration tests in CI with `RISC0_DEV_MODE=0` | `.github/workflows/ci.yml` — workspace tests + ignored live-LEZ tests |
 

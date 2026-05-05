@@ -41,17 +41,24 @@ envelope over Logos Delivery, and anchor the CID on the LEZ registry.
       reuses the same LogosAPI handle the UI plugin gets.
 
 5. **Test the .lgx in a real Basecamp instance.** The .lgx is at
-   `dist/whistleblower-plugin.lgx`. Load steps:
-   ```bash
-   # Determine where Basecamp expects plugin .lgx files. Whisper-wall
-   # uses ~/.local/share/Logos/LogosBasecampDev/plugins/<name>/.
-   # For the .lgx self-contained format, drop into the plugin manager
-   # via Basecamp UI's "Install plugin" → select dist/whistleblower-plugin.lgx.
+   `dist/whistleblower-plugin.lgx`. Pre-built Basecamp binaries are at
+   <https://github.com/logos-co/logos-basecamp/releases/latest>:
+   - macOS arm64: `LogosBasecamp-Desktop-vX.Y.Z-aarch64.dmg`
+   - Linux arm64/x86_64: `…-aarch64.AppImage` / `…-x86_64.AppImage`
 
-   # Set required env vars before launching Basecamp:
+   Plugin directory varies by host OS:
+   - macOS: `~/Library/Application Support/Logos/LogosBasecampDev/plugins/whistleblower/`
+   - Linux: `~/.local/share/Logos/LogosBasecampDev/plugins/whistleblower/` (XDG)
+
+   `nix run .#install` does this automatically. Or use Basecamp's GUI
+   "Install plugin" flow against the .lgx file directly.
+
+   ```bash
+   # Required env vars before launching Basecamp:
    export NSSA_WALLET_HOME_DIR=/path/to/seeded/wallet
    export NSSA_SEQUENCER_URL=http://127.0.0.1:3040
-   /path/to/logos-basecamp.AppImage
+   open /Applications/LogosBasecamp.app    # macOS
+   # or: ./LogosBasecamp-Desktop-vX.Y.Z.AppImage   # Linux
    ```
    This validates the LogosAPI integration end-to-end (storage upload →
    delivery broadcast → registry anchor) using real Basecamp-loaded

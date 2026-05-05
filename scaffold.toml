@@ -34,4 +34,4 @@ path = "idl"
 
 [localnet]
 port = 3040
-risc0_dev_mode = true
+risc0_dev_mode = false

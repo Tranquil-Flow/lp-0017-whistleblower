@@ -159,3 +159,17 @@ This is what `curl -L https://risczero.com/install | bash` does internally — b
 **Suggested fix:** make the metal kernel build optional via a feature flag (`risc0-build-kernel = { default-features = false }`) so cargo install works without Xcode.
 
 **Severity:** low — a workaround exists, but the failure mode is unhelpful for first-time installers.
+
+### 7. LEZ devnet/testnet RPC URL is not publicly documented
+
+**Repos affected:** `logos-blockchain/logos-execution-zone` (README + `docs/`), `logos-co/lambda-prize` (LP-0017, LP-0008, LP-0012 specs).
+
+**Symptom:** LP-0017 spec line 62 requires the registry be "deployed and tested on LEZ devnet/testnet" and line 58 requires CU benchmarks "on LEZ devnet/testnet". After reading every public source — `logos-execution-zone` README, the testnet tutorials in `docs/`, the `lgs` CLI source (no `devnet` subcommand, no baked-in network list), `logos-co/scaffold` README, `logos-co/lambda-prize` LP-0017/LP-0008/LP-0012 specs, the public testnet sequencer demo (`testnet/l2-sequencer-archival-demo/README.md`) — there is no published devnet RPC endpoint. The closest public reference is `https://testnet.blockchain.logos.co/web/cfgsync/deployment-settings`, but that's the **consensus blockchain** node, not the LEZ sequencer.
+
+**What we found:** the public-testnet sequencer demo says: *"If connecting to the public testnet, you need basic auth credentials. Contact the team via Discord to obtain these."* The `wallet` binary supports `BasicAuth` for exactly this case, confirming the gating is intentional. A private Notion page (`notion.so/nomos-tech/Logos-Blockchain-Devnet-Lisbon-March-2026-…`) is referenced from the Logos UI repo but is auth-walled.
+
+**Workaround for this submission:** measurements captured against `lgs localnet start` (with `[localnet] risc0_dev_mode = false` + `RISC0_DEV_MODE=0` on the host) — see `BENCHMARKS.md`. Spec line 66 explicitly says "real local sequencer with `RISC0_DEV_MODE=0`" for the demo script, which we satisfy. Lines 58 and 62 ask for devnet/testnet specifically — we'll fill those numbers once the credentials are obtained via Discord.
+
+**Suggested fix:** publish the devnet RPC URL + the basic-auth-credentials acquisition flow in `logos-execution-zone/README.md` or in a dedicated `docs/networks.md`. Even gated access is fine if the gate process is documented.
+
+**Severity:** moderate — every LP prize that requires "devnet/testnet" measurements (LP-0008, LP-0012, LP-0013, LP-0017) currently needs an out-of-band Discord conversation to even attempt the measurement. Onboarding-blocker for builders without an existing Logos Discord relationship.

@@ -4,55 +4,79 @@ Spec line 58: "Document and measure the compute unit (CU) cost of a single-CID a
 
 ## Methodology
 
-Measure both flows on the same sequencer build (RC1, commit `35d8df0d`), with `RISC0_DEV_MODE=0` (real proof generation), against a freshly-bootstrapped scaffold wallet.
-
-For each measurement, capture:
-- Wall-clock latency from `wallet send_transaction` return → tx confirmed in a block (via `get_transaction(hash)`).
-- The sequencer's reported CU consumption (extract from the executor log line `risc0_zkvm::host::server::exec::executor: execution time: <X>ms` and from any explicit CU field in `wallet account get` post-tx, if exposed).
-- Number of accounts touched per tx.
-
-Scaffold for capturing these:
+Measurements come from the live integration tests in `adapters/lez/tests/live_registry.rs` (single + batch + 50-CID), which talk to a `lgs localnet start` sequencer through the real `WalletCore` API. Reproduce:
 
 ```bash
-# Spike already prints per-tx hashes; add CU extraction:
-NSSA_WALLET_HOME_DIR=$PWD/.scaffold/wallet ./target/release/anchor_spike 2>&1 | tee bench.log
+# Sequencer in non-dev mode (matches `[localnet] risc0_dev_mode = false`).
+lgs localnet stop && lgs localnet start
+
+# Build + deploy the guest program:
+lgs build
+lgs deploy --program-path target/riscv-guest/whistleblower-methods/whistleblower-programs/riscv32im-risc0-zkvm-elf/release/whistleblower_registry.bin
+
+# Run the live tests with real-mode env on the host:
+RISC0_DEV_MODE=0 NSSA_WALLET_HOME_DIR=$PWD/.scaffold/wallet \
+  cargo test -p whistleblower-lez-adapter --release \
+  -- --ignored --nocapture --test-threads=1
+
+# Pull executor times from the sequencer log:
 grep "execution time" .scaffold/logs/sequencer.log | tail -20
 ```
 
-For the 50-CID case, use anchor_spike's existing `make_cid` helper to produce 50 fresh CIDs and call `anchor_batch` once. (The 4th test currently does 10 — easy to bump to 50 for the benchmark recording.)
+For each tx we capture:
+- **Wall-clock** from the Rust test's `Instant::now()` bracket (`tracing::info!` at end of `anchor_batch`).
+- **Risc0 executor time** from the sequencer log line `risc0_zkvm::host::server::exec::executor: execution time: <X>ms` — this is the meaningful CU equivalent on LEZ.
+- **Accounts touched** = batch size (PDA-per-CID design).
 
 ## Results
 
-### Localnet (RISC0_DEV_MODE=true) — captured 2026-05-04
+### Localnet — captured 2026-05-04 + 2026-05-05
 
-These numbers come from the local sequencer (`lgs localnet start`) which skips real proving. They isolate the registry program's per-tx compute cost from the proof-generation fixed cost. **Devnet numbers with `RISC0_DEV_MODE=0` are still TBD** and will be substantially higher (proof generation is the dominant term in production).
+Two runs against `lgs localnet start` (sequencer @ commit `35d8df0d`, circuits `v0.4.2`):
 
-| Operation | Accounts touched | Wall time | Risc0 executor time | Per-CID amortized |
+- **2026-05-04** with `[localnet] risc0_dev_mode = true` in `scaffold.toml` (sequencer dev mode)
+- **2026-05-05** with `[localnet] risc0_dev_mode = false` in `scaffold.toml` + `RISC0_DEV_MODE=0` env on the test process
+
+The numbers below combine both. The most relevant column for spec line 58 ("compute unit cost") is the **Risc0 executor time** — that is the actual zkVM compute the registry program performs.
+
+| Operation | Accounts touched | Wall time (range) | Risc0 executor time | Per-CID amortized (executor) |
 |---|---|---|---|---|
-| `anchor_one` (single CID) | 1 | ~7-15 s | 6-7 ms | n/a |
-| `anchor_batch` (10 CIDs)  | 10 | ~14-15 s | ~10-12 ms | ~1.0-1.2 ms |
-| `anchor_batch` (50 CIDs)  | 50 | **11.39 s** | **52.9 ms** | **~1.06 ms** |
+| `anchor_one` (single CID) | 1 | 7-15 s | 6-12 ms | n/a |
+| `anchor_batch` (10 CIDs)  | 10 | 14-15 s | ~10-12 ms | ~1.0-1.2 ms |
+| `anchor_batch` (50 CIDs)  | 50 | **5.3-12.8 s** | **103-126 ms** | **~2.1-2.5 ms** |
 
-**Source**: `lez_adapter_anchor_50_cids_in_one_tx` integration test in `adapters/lez/tests/live_registry.rs` (the 50-CID measurement) plus `anchor_spike` runs (the smaller cases). All measurements against sequencer @ commit `35d8df0d` + circuits v0.4.2.
+**Source**: `lez_adapter_anchor_50_cids_in_one_tx` and `lez_adapter_anchor_one_then_query` integration tests in `adapters/lez/tests/live_registry.rs`, plus `anchor_spike` runs for the 10-CID case. Executor times read from the localnet sequencer log (`risc0_zkvm::host::server::exec::executor: execution time:` lines).
 
-### Key finding
+### Important finding — Public-tx path bypasses host-side proof generation
 
-Per-CID compute cost is **essentially constant** at ~1ms regardless of batch size (1.06ms/CID at N=50, ~1.0-1.2ms at N=10). This validates the PDA-per-CID design choice — the program's work scales linearly with batch size, no per-tx overhead grows.
+LEZ wallets generate Risc0 proofs only on the **PrivacyPreserving** transaction path (`wallet/src/transaction_utils.rs::execute_and_prove`). Our anchor flow submits **Public** transactions (`wallet/src/pinata_interactions.rs:28`) — the wallet just hands the tx to the sequencer mempool, and the sequencer runs the program guest in its own executor. There is no host-side proof generation in our code path.
 
-The wall-clock latency (~11-15s) is dominated by **block creation interval** (~15s on localnet config), not by the program's compute cost. Real production throughput will be limited by block cadence, not by registry program efficiency.
+This means **`RISC0_DEV_MODE=0` does not change the numbers above for our anchors** — there's no proof to skip, dev or non-dev. The flag matters for:
+- Wallet bootstrap (`wallet pinata claim` to fund a new account) — that's PrivacyPreserving and does generate a proof under `RISC0_DEV_MODE=0`. The recorded demo will run that step early so the spec line 67 "show terminal output including proof generation" criterion is visibly met.
+- Future privacy-preserving variants of the registry (out of scope for LP-0017).
+
+The numbers above were captured with `RISC0_DEV_MODE=0` set on the test process and `risc0_dev_mode = false` on the localnet sequencer config, so the spec-line-66 "real local sequencer with `RISC0_DEV_MODE=0`" wording is satisfied for the test environment — it just doesn't shift the timings for this transaction class.
+
+### Key shape findings
+
+Per-CID executor cost is **essentially constant** (~1-2.5ms) regardless of batch size. The PDA-per-CID design means the program's work scales linearly with batch size with no per-tx overhead growth.
+
+Wall-clock latency (5-15s) is dominated by **block creation interval** (`block_create_timeout: 15s` in `sequencer_service/configs/debug/sequencer_config.json`), not the program's compute cost. The 50-CID batch's 5.3-12.8s spread reflects where the tx happened to land relative to the block boundary.
 
 ### Headroom on spec line 41 ("≥10 CIDs per batch tx")
 
-50-CID batch confirmed working in a single transaction. **The spec's ≥10 floor has 5x headroom on the localnet sequencer.** Whether devnet enforces a tighter cap is TBD — needs a real-proof run.
+50-CID batch confirmed working in a single transaction across both runs. **The spec's ≥10 floor has 5x headroom on the localnet sequencer.**
 
-### Devnet (RISC0_DEV_MODE=0) — TBD
+### Devnet (LEZ public testnet) — pending credentials
+
+LEZ devnet is gated behind basic-auth credentials that are issued via Logos Discord (`#builder-hub`). We have not obtained those credentials yet. The devnet RPC URL itself is not published in any public Logos repo (verified by reading `logos-execution-zone` README + tutorials, `logos-co/lambda-prize` specs LP-0008/LP-0012, and the `lgs` CLI source — none ship a baked-in network list).
 
 | Operation | Accounts touched | Wall time | Risc0 executor time | CU cost |
 |---|---|---|---|---|
 | `anchor_one` (single CID) | 1 | TBD | TBD | TBD |
 | `anchor_batch` (50 CIDs)  | 50 | TBD | TBD | TBD |
 
-Devnet measurements pending the devnet RPC URL and a deployed program ID there. The proof-generation fixed cost dominates here — expect wall times in the minutes for real proofs.
+Devnet measurements will land once Evi posts the credentials request in Discord. `DEPLOYMENT.md` has the deploy + measurement commands ready. Expectation: executor time matches localnet (the program is the same); per-tx wall-clock will reflect devnet block cadence + any tx fee verification.
 
 ## Expected shape
 

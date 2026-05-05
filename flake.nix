@@ -181,8 +181,15 @@
         };
 
         # ── Install helper ──────────────────────────────────────────────────
+        # Plugin dir varies by host OS:
+        #   macOS: ~/Library/Application Support/Logos/LogosBasecampDev/plugins/<name>/
+        #   Linux: ~/.local/share/Logos/LogosBasecampDev/plugins/<name>/        (XDG)
         installScript = pkgs.writeShellScriptBin "install-whistleblower-plugin" ''
-          PLUGIN_DIR="$HOME/.local/share/Logos/LogosBasecampDev/plugins/whistleblower"
+          case "$(uname -s)" in
+            Darwin) PLUGIN_BASE="$HOME/Library/Application Support/Logos/LogosBasecampDev/plugins" ;;
+            *)      PLUGIN_BASE="$HOME/.local/share/Logos/LogosBasecampDev/plugins" ;;
+          esac
+          PLUGIN_DIR="$PLUGIN_BASE/whistleblower"
           mkdir -p "$PLUGIN_DIR"
           cp -f ${plugin}/lib/libwhistleblower_plugin.* "$PLUGIN_DIR/" 2>/dev/null || true
           cp -f ${plugin}/lib/libwhistleblower_ffi.*    "$PLUGIN_DIR/" 2>/dev/null || true
