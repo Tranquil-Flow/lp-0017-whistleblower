@@ -35,6 +35,8 @@ def main() -> None:
     tasks = read(PLAN) if PLAN.exists() else ""
     readme = read(ROOT / "README.md")
     demo = read(ROOT / "DEMO.md")
+    benchmarks = read(ROOT / "BENCHMARKS.md")
+    measure_cu = read(ROOT / "scripts" / "measure_cu.sh")
     pr = read(PR_DRAFT) if PR_DRAFT.exists() else ""
 
     if tasks:
@@ -54,6 +56,9 @@ def main() -> None:
     if pr:
         require("lgs basecamp install" in pr, "PR draft pre-submit gates must include the lgs Basecamp install path")
     require("lgs basecamp install" in readme or "nix run  .#install" in readme, "README must document plugin install path")
+    require("lez_adapter_anchor_50_cids_in_one_tx" in measure_cu, "scripts/measure_cu.sh must capture the 50-CID live benchmark path")
+    require("TBD (needs anchor_spike --batch=50 flag" not in measure_cu, "scripts/measure_cu.sh must not leave the 50-CID benchmark as a stale TBD")
+    require("50 is unverified" not in benchmarks, "BENCHMARKS.md must not contradict the completed 50-CID live benchmark")
 
     print("submission docs ok")
 

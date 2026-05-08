@@ -92,4 +92,4 @@ Where `per_tx_overhead` is dominated by the Risc0 proof-generation fixed cost (t
 
 - LEZ's per-transaction compute budget may change during testnet (per LP-0017 spec line 45 — "LEZ's per-transaction compute budget may change during testnet"). Numbers here are pinned to the `35d8df0d` commit + circuits v0.4.2.
 - Account-data size affects state-write CU. Each `AnchorEntry` borsh-encodes to ~110 bytes (32-byte CID hash + 32-byte metadata hash + 8-byte timestamp + variable CID string + Borsh framing). All entries fit comfortably in a single account-data write.
-- The 50-CID batch must fit within LEZ's per-tx account list cap. The 10-CID batch in our spike's test 4 confirmed at least 10 works; 50 is unverified.
+- The 50-CID batch must fit within LEZ's per-tx account list cap. The live `lez_adapter_anchor_50_cids_in_one_tx` integration test confirms 50 fits on the current localnet stack; rerun `scripts/measure_cu.sh` against devnet once credentials land to confirm the public network has the same cap/headroom.
