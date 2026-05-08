@@ -13,3 +13,9 @@ ui/Cargo.lock
 /dist/
 # Local working docs that shouldn't ship in repo history
 PR_DRAFT.md
+
+# Nix / local runtime byproducts
+/result
+/.cache/
+/metadata.json
+/ui/ffi/.cargo/

@@ -155,4 +155,11 @@ Total run time target: 3-4 minutes.
 
 ## Reproducibility script
 
-After Phase 1.7 lands, `scripts/demo.sh` will run scenes 2-5 non-interactively so reviewers can replay the exact flow from a clean clone. The video shows the human-driven version; the script is for evaluation.
+`scripts/demo.sh` now prepares the reproducible terminal side of the demo: non-dev localnet, registry build/deploy, idempotent anchor spike, live LEZ adapter tests, Basecamp `.lgx` install, batch CLI build, and ready-to-run commands for the on-camera batch + `spel inspect` scenes. The UI upload/broadcast scene remains human-driven inside Basecamp because file selection and module loading are GUI interactions.
+
+Validate demo artifacts with:
+
+```bash
+python3 scripts/validate_demo_artifacts.py
+bash -n scripts/demo.sh
+```

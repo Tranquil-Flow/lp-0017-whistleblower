@@ -4,8 +4,9 @@
   "description": "Censorship-resistant document upload + on-chain anchoring",
   "type": "ui",
   "category": "tools",
-  "main": "libwhistleblower_plugin",
+  "main": "whistleblower",
   "view": "qml/Main.qml",
+  "dependencies": ["storage_module", "delivery_module"],
   "nix": {
     "packages": {
       "runtime": ["qt6.qtdeclarative", "qt6.qtwayland"]

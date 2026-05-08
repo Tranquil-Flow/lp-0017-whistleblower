@@ -178,6 +178,29 @@
             cp -r ${./ui/qml} $out/qml
             runHook postInstall
           '';
+
+          # Belt-and-braces install_name fix: even with `.cargo/config.toml`
+          # setting the FFI's own install_name to `@loader_path/...`, prior
+          # build artifacts in $CARGO_TARGET_DIR can leak the absolute build
+          # path into the linked plugin (cargo caches metadata aggressively).
+          # Rewrite both the FFI's self-install_name AND any reference to it
+          # from the plugin dylib to use `@loader_path` so dyld resolves the
+          # FFI relative to the plugin's installed location.
+          postFixup = ''
+            for dyl in $out/lib/lib*.dylib $out/lib/whistleblower.dylib; do
+              [ -f "$dyl" ] || continue
+              # Rewrite the FFI self-install_name (no-op if already correct).
+              if [[ "$dyl" == *libwhistleblower_ffi.dylib ]]; then
+                ${pkgs.darwin.cctools}/bin/install_name_tool -id @loader_path/libwhistleblower_ffi.dylib "$dyl" || true
+              fi
+              # For any dylib that references libwhistleblower_ffi via an
+              # absolute build path, rewrite to @loader_path.
+              ref=$(${pkgs.darwin.cctools}/bin/otool -L "$dyl" | awk '/libwhistleblower_ffi\.dylib/ && $1 != "@loader_path/libwhistleblower_ffi.dylib" { print $1; exit }')
+              if [ -n "$ref" ]; then
+                ${pkgs.darwin.cctools}/bin/install_name_tool -change "$ref" @loader_path/libwhistleblower_ffi.dylib "$dyl" || true
+              fi
+            done
+          '';
         };
 
         # ── Install helper ──────────────────────────────────────────────────
@@ -198,15 +221,21 @@
           echo "Installed to $PLUGIN_DIR"
         '';
 
-        lgx = nix-bundle-lgx.bundlers.${system}.portable plugin;
+        # `lgs basecamp install` expects `packages.<system>.lgx` to be the
+        # local-dev variant (`darwin-arm64-dev`). `lgs basecamp build-portable`
+        # expects `packages.<system>.lgx-portable` to be the AppImage variant
+        # (`darwin-arm64`). Expose both via the matching nix-bundle-lgx bundlers.
+        lgx          = nix-bundle-lgx.bundlers.${system}.default  plugin;
+        lgxPortable  = nix-bundle-lgx.bundlers.${system}.portable plugin;
 
       in {
         packages = {
-          default = plugin;
-          ffi     = ffi;
-          plugin  = plugin;
-          install = installScript;
-          lgx     = lgx;
+          default        = plugin;
+          ffi            = ffi;
+          plugin         = plugin;
+          install        = installScript;
+          lgx            = lgx;
+          lgx-portable   = lgxPortable;
         };
 
         devShells.default = pkgs.mkShell {

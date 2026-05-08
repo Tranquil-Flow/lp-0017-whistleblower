@@ -8,9 +8,9 @@
   "description": "Censorship-resistant document upload + on-chain anchoring (LP-0017)",
   "icon": "",
   "main": {
-    "linux-amd64-dev": "libwhistleblower_plugin.so",
-    "linux-x86_64-dev": "libwhistleblower_plugin.so",
-    "darwin-arm64-dev": "libwhistleblower_plugin.dylib"
+    "linux-amd64-dev": "whistleblower.so",
+    "linux-x86_64-dev": "whistleblower.so",
+    "darwin-arm64-dev": "whistleblower.dylib"
   },
   "manifestVersion": "0.1.0",
   "name": "whistleblower",

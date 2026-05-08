@@ -2,6 +2,8 @@
 
 #include <QCoreApplication>
 #include <QDateTime>
+#include <QDebug>
+#include <QFile>
 #include <QFileInfo>
 #include <QFuture>
 #include <QFutureWatcher>
@@ -19,6 +21,21 @@
 #include "logos_api_client.h"
 #include "logos_object.h"
 #include "logos_mode.h"
+
+namespace {
+// Read a JSON config from a Qt resource (`qrc:/configs/<name>`). Returns the
+// raw string contents — storage_module / delivery_module both expect the
+// caller to pass the full JSON document, not a path. Returns empty on failure
+// (caller logs + skips init).
+QString readBundledConfig(const QString& name) {
+    QFile f(QStringLiteral(":/configs/") + name);
+    if (!f.open(QIODevice::ReadOnly)) {
+        qWarning() << "WhistleblowerBackend: could not open bundled config:" << name;
+        return {};
+    }
+    return QString::fromUtf8(f.readAll());
+}
+}
 
 // C FFI from ui/ffi/ — resolved at runtime via dlopen / co-located dylib.
 extern "C" {
@@ -52,6 +69,28 @@ WhistleblowerBackend::WhistleblowerBackend(LogosAPI* api, QObject* parent)
         m_deliveryClient = m_api->getClient("delivery_module");
         if (m_storageClient) {
             m_storageObject = m_storageClient->requestObject("storage_module");
+            // storage_module needs init(config) + start() before any upload.
+            // The bundled config (ui/configs/storage_config.json) ships real
+            // SPRs (Signed Peer Records) for the public Logos storage
+            // network, sourced from logos-co/node-configs#feat/storage-config-2.
+            // Failure here doesn't crash the plugin — uploads will just hit
+            // their 60s safety timeout if the module never gets ready.
+            const QString storageCfg = readBundledConfig("storage_config.json");
+            if (!storageCfg.isEmpty()) {
+                // Use the QVariantList overload explicitly to avoid C++ picking
+                // the (QVariant, QVariant, timeout) overload — int 30000 would
+                // get coerced into a second positional arg otherwise.
+                qInfo() << "WhistleblowerBackend: storage_module.init() …";
+                QVariantList initArgs{QVariant(storageCfg)};
+                QVariant initOk = m_storageClient->invokeRemoteMethod(
+                    "storage_module", "init", initArgs, Timeout(30000));
+                qInfo() << "WhistleblowerBackend: storage_module.init() ->" << initOk;
+                qInfo() << "WhistleblowerBackend: storage_module.start() …";
+                QVariantList startArgs;
+                QVariant startOk = m_storageClient->invokeRemoteMethod(
+                    "storage_module", "start", startArgs, Timeout(30000));
+                qInfo() << "WhistleblowerBackend: storage_module.start() ->" << startOk;
+            }
             // Subscribe to the upload-completion event up front. The lambda
             // captures `this` and dispatches to whichever pending upload
             // callback is currently active (m_pendingUploadCallback).
@@ -82,6 +121,25 @@ WhistleblowerBackend::WhistleblowerBackend(LogosAPI* api, QObject* parent)
         }
         if (m_deliveryClient) {
             m_deliveryObject = m_deliveryClient->requestObject("delivery_module");
+            // delivery_module needs init(config) + start() before send().
+            // Bundled config ships {"mode":"Core","preset":"logos.dev"} —
+            // the preset key resolves to liblogosdelivery's compiled-in
+            // bootstrap peer list for the public logos.dev network (see
+            // github.com/logos-messaging/logos-delivery
+            // waku/factory/networks_config.nim::LogosDevConf).
+            const QString deliveryCfg = readBundledConfig("delivery_config.json");
+            if (!deliveryCfg.isEmpty()) {
+                qInfo() << "WhistleblowerBackend: delivery_module.init() …";
+                QVariantList initArgs{QVariant(deliveryCfg)};
+                QVariant initOk = m_deliveryClient->invokeRemoteMethod(
+                    "delivery_module", "init", initArgs, Timeout(30000));
+                qInfo() << "WhistleblowerBackend: delivery_module.init() ->" << initOk;
+                qInfo() << "WhistleblowerBackend: delivery_module.start() …";
+                QVariantList startArgs;
+                QVariant startOk = m_deliveryClient->invokeRemoteMethod(
+                    "delivery_module", "start", startArgs, Timeout(30000));
+                qInfo() << "WhistleblowerBackend: delivery_module.start() ->" << startOk;
+            }
             if (m_deliveryObject) {
                 // Per delivery_module_plugin.h: data[0]=request id, data[1]=hash,
                 // data[2]=timestamp.

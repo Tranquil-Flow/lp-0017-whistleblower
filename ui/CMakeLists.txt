@@ -47,8 +47,20 @@ else()
         FILES qml/Main.qml
     )
 
-    # The Logos SDK headers are optional — our code only forward-declares
-    # LogosAPI as an opaque pointer and never dereferences it.
+    # Bundle the storage_module + delivery_module init configs as qrc:
+    #   qrc:/configs/storage_config.json — real Logos storage SPRs
+    #   qrc:/configs/delivery_config.json — Logos Delivery `logos.dev` preset
+    # WhistleblowerBackend's constructor reads these and calls init+start on
+    # both modules so the publish flow has a usable network when the user
+    # clicks "Publish".
+    qt_add_resources(${PLUGIN_TARGET} "whistleblower_configs"
+        PREFIX "/configs"
+        BASE "configs"
+        FILES configs/storage_config.json configs/delivery_config.json
+    )
+
+    # Logos SDK headers are required for the real Basecamp integration: the
+    # backend dereferences LogosAPIClient to call storage_module / delivery_module.
     if(DEFINED ENV{LOGOS_CPP_SDK_ROOT})
         set(LOGOS_CPP_SDK_ROOT "$ENV{LOGOS_CPP_SDK_ROOT}")
     endif()
@@ -71,6 +83,16 @@ else()
         Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Quick Qt6::QuickWidgets Qt6::RemoteObjects
         Qt6::Qml Qt6::Concurrent
         whistleblower_ffi
+    )
+
+    # Basecamp's findAvailableUiPlugins() (in main_ui_plugin/MainUIBackend.cpp)
+    # discovers C++ plugins via the filename convention `<plugin>/<plugin>.<ext>`
+    # — i.e. it expects this dylib to be named exactly `whistleblower.dylib`,
+    # not `libwhistleblower_plugin.dylib`. PREFIX/OUTPUT_NAME make cmake emit
+    # the right filename without renaming the cmake target.
+    set_target_properties(${PLUGIN_TARGET} PROPERTIES
+        OUTPUT_NAME "whistleblower"
+        PREFIX ""
     )
 
     if(APPLE)
@@ -112,6 +134,12 @@ else()
         PREFIX "/qml"
         BASE "qml"
         FILES qml/Main.qml
+    )
+
+    qt_add_resources(${APP_TARGET} "whistleblower_app_configs"
+        PREFIX "/configs"
+        BASE "configs"
+        FILES configs/storage_config.json configs/delivery_config.json
     )
 
     target_include_directories(${APP_TARGET} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)

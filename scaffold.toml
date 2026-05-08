@@ -35,3 +35,22 @@ path = "idl"
 [localnet]
 port = 3040
 risc0_dev_mode = false
+
+[basecamp]
+pin = "a746cdbc521f72ee22c5a4856fd17a9802bb9d69"
+source = "https://github.com/logos-co/logos-basecamp"
+lgpm_flake = ""
+port_base = 60000
+port_stride = 10
+
+[basecamp.modules.delivery_module]
+flake = "github:logos-co/logos-delivery-module/1fde1566291fe062b98255003b9166b0261c6081#lgx"
+role = "dependency"
+
+[basecamp.modules.storage_module]
+flake = "github:logos-co/logos-storage-module/b1d82a32c1ba27e20d07b7ed8555fd45b02adb4e#lgx"
+role = "dependency"
+
+[basecamp.modules.whistleblower]
+flake = "path:.#lgx"
+role = "project"
