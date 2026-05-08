@@ -35,6 +35,7 @@ def main() -> None:
     tasks = read(PLAN) if PLAN.exists() else ""
     readme = read(ROOT / "README.md")
     demo = read(ROOT / "DEMO.md")
+    ui_readme = read(ROOT / "ui" / "README.md")
     benchmarks = read(ROOT / "BENCHMARKS.md")
     measure_cu = read(ROOT / "scripts" / "measure_cu.sh")
     pr = read(PR_DRAFT) if PR_DRAFT.exists() else ""
@@ -59,6 +60,16 @@ def main() -> None:
     require("lez_adapter_anchor_50_cids_in_one_tx" in measure_cu, "scripts/measure_cu.sh must capture the 50-CID live benchmark path")
     require("TBD (needs anchor_spike --batch=50 flag" not in measure_cu, "scripts/measure_cu.sh must not leave the 50-CID benchmark as a stale TBD")
     require("50 is unverified" not in benchmarks, "BENCHMARKS.md must not contradict the completed 50-CID live benchmark")
+
+    if "DONE (2026-05-09)" in ui_readme:
+        require("load the `.lgx` in a real Basecamp" not in readme, "README status must not say the real Basecamp smoke is still pending")
+        if tasks:
+            row_17 = table_row(tasks, "1.7 — Basecamp UI plugin")
+            require("real-Basecamp smoke pending" not in row_17, "TASKS.md Task 1.7 row must not call real Basecamp smoke pending after it landed")
+            require("storage upload" in row_17 and "delivery broadcast" in row_17, "TASKS.md Task 1.7 row must cite real Basecamp storage/delivery smoke evidence")
+        if pr:
+            require("[x] **Test the installed `.lgx`" in pr, "PR draft checklist must mark real Basecamp .lgx smoke complete once ui/README records it")
+            require("storage upload" in pr and "delivery broadcast" in pr, "PR draft must cite real Basecamp smoke evidence")
 
     print("submission docs ok")
 

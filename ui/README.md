@@ -40,8 +40,21 @@ envelope over Logos Delivery, and anchor the CID on the LEZ registry.
    b) Restructure batch CLI to be a Basecamp plugin component that
       reuses the same LogosAPI handle the UI plugin gets.
 
-5. **Test the .lgx in a real Basecamp instance.** The .lgx is at
-   `dist/whistleblower-plugin.lgx`. Pre-built Basecamp binaries are at
+5. ✅ ~~Test the .lgx in a real Basecamp instance.~~ — DONE (2026-05-09).
+   `lgs basecamp install` + `lgs basecamp launch alice` loads the plugin,
+   storage_module accepts the upload (manifest CID returned), delivery_module
+   broadcasts the CID JSON envelope on `/lp0017-whistleblower/1/cids/json`,
+   and the UI reflects the green "Uploaded — CID …" + "Working: broadcasting
+   to Logos Delivery…" states.
+
+   **One-time fix required:** the upstream `logos-co/logos-delivery-module#lgx`
+   flake omits `librln.dylib` from its install output and bakes a Nix
+   sandbox path into `liblogosdelivery.dylib`'s load command. Run
+   `scripts/fix_delivery_rln.sh` after every `lgs basecamp launch <profile>`
+   that does **not** use `--no-clean` (the clean-slate scrub re-extracts the
+   broken upstream output). Documented as `BUGS_FILED.md §8`.
+
+   Pre-built Basecamp binaries are at
    <https://github.com/logos-co/logos-basecamp/releases/latest>:
    - macOS arm64: `LogosBasecamp-Desktop-vX.Y.Z-aarch64.dmg`
    - Linux arm64/x86_64: `…-aarch64.AppImage` / `…-x86_64.AppImage`
@@ -60,9 +73,6 @@ envelope over Logos Delivery, and anchor the CID on the LEZ registry.
    open /Applications/LogosBasecamp.app    # macOS
    # or: ./LogosBasecamp-Desktop-vX.Y.Z.AppImage   # Linux
    ```
-   This validates the LogosAPI integration end-to-end (storage upload →
-   delivery broadcast → registry anchor) using real Basecamp-loaded
-   `storage_module` and `delivery_module`.
 
 6. **Devnet deployment + RISC0_DEV_MODE=0 numbers.** Awaits the Logos
    team's devnet RPC URL. See `DEPLOYMENT.md` for the commands ready
