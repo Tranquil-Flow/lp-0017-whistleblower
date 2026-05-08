@@ -102,6 +102,7 @@ run_step "06-live-lez-tests" cargo test -p whistleblower-lez-adapter --release -
 # 6. Install the Basecamp plugin and dependencies via scaffold.
 if [[ "$SKIP_BASECAMP" -eq 0 ]]; then
     run_step "07-basecamp-install" lgs basecamp install
+    run_step "07b-fix-delivery-rln" scripts/fix_delivery_rln.sh
 else
     echo "[demo] skipping lgs basecamp install (--skip-basecamp)"
 fi

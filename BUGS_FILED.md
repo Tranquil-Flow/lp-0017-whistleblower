@@ -173,3 +173,29 @@ This is what `curl -L https://risczero.com/install | bash` does internally — b
 **Suggested fix:** publish the devnet RPC URL + the basic-auth-credentials acquisition flow in `logos-execution-zone/README.md` or in a dedicated `docs/networks.md`. Even gated access is fine if the gate process is documented.
 
 **Severity:** moderate — every LP prize that requires "devnet/testnet" measurements (LP-0008, LP-0012, LP-0013, LP-0017) currently needs an out-of-band Discord conversation to even attempt the measurement. Onboarding-blocker for builders without an existing Logos Discord relationship.
+
+### 8. `delivery_module` Nix output is missing `librln.dylib` (broken @loader_path link on macOS arm64)
+
+**Repos affected:** `logos-co/logos-delivery-module` (its `lgx`/`default` flake outputs).
+
+**Symptom:** `delivery_module_plugin.dylib` fails to dlopen on every macOS arm64 launch with:
+
+```
+Library not loaded: /nix/var/nix/builds/nix-872-90086794/source/target/release/deps/librln.dylib
+  Referenced from: <…> liblogosdelivery.dylib
+  Reason: tried: '<many nix-store/qt paths>' (no such file), … 'librln.dylib' (no such file)
+LogosAPIConsumer: Failed to acquire plugin/replica for object: "delivery_module"
+WhistleblowerBackend: delivery_module.init() -> QVariant(Invalid)
+```
+
+The deployed module dir contains `delivery_module_plugin.dylib`, `liblogosdelivery.dylib`, `libpq*.dylib`, `manifest.json`, `variant` — but **no `librln.dylib`**. Zerokit is built into the local `/nix/store` (via the lgx build's transitive Cargo deps) but its `librln.dylib` is never copied into the install output.
+
+**Root cause:** the flake links `liblogosdelivery.dylib` against Zerokit's `librln.dylib` as a Rust `cdylib` dep, but (a) the Rust build records the linker's *build-time absolute path* (`/nix/var/nix/builds/…/deps/librln.dylib`) as the load command rather than `@loader_path/librln.dylib`, and (b) the Nix `installPhase` doesn't copy `librln.dylib` next to `liblogosdelivery.dylib` in the output. Some local rebuilds (this project's flake, May 8 15:20) already rewrite the load command to `@loader_path/librln.dylib`, but `librln.dylib` itself is still absent from the deployed dir, so the dlopen still fails.
+
+**Workaround we used:** `scripts/fix_delivery_rln.sh` — idempotently locates `librln.dylib` in the local `/nix/store` (zerokit-* output), copies it next to `liblogosdelivery.dylib` in every profile's `delivery_module/` install dir (and in `~/Library/Application Support/Logos/LogosBasecampDev/modules/delivery_module/`, where `lgs basecamp launch` syncs runtime data), sets the copied dylib's self-install-name to `@loader_path/librln.dylib`, and rewrites `liblogosdelivery.dylib`'s librln load command to `@loader_path/librln.dylib`. Re-run after any `lgs basecamp launch <profile>` that did **not** use `--no-clean` (the clean-slate scrub re-extracts the broken upstream output).
+
+After applying the fix, the publish flow runs end-to-end: storage_module stores a manifest CID, delivery_module's `send()` broadcasts the CID JSON to `/lp0017-whistleblower/1/cids/json`, and the Whistleblower UI shows "Uploaded — CID …" + "Working: broadcasting to Logos Delivery…".
+
+**Suggested fix:** add a `postFixup` (or equivalent) phase to `logos-delivery-module`'s flake that (a) copies `${zerokit}/lib/librln.dylib` into the module's install dir, (b) `install_name_tool -id @loader_path/librln.dylib` on the copy, and (c) `install_name_tool -change <build-path> @loader_path/librln.dylib liblogosdelivery.dylib`. The Cargo-side fix is to set `cargo:rustc-link-arg=-Wl,-rpath,@loader_path` in a build script for the FFI crate so the load command emerges as `@rpath/librln.dylib` and the install dir RPATH resolution works without rewriting.
+
+**Severity:** high — without the workaround, `delivery_module` cannot load at all on macOS arm64, which blocks every Basecamp app that uses Logos Delivery (LP-0017 specifically; potentially LP-0008/LP-0012/LP-0013 if they also touch Delivery).

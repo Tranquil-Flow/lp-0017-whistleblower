@@ -28,6 +28,7 @@ export RISC0_DEV_MODE=0   # required by spec line 67 — must be visible in env 
 # Basecamp side: built + installed via lgs basecamp:
 lgs basecamp setup        # one-time per pinned basecamp rev
 lgs basecamp install      # builds .lgx + installs into the alice profile
+scripts/fix_delivery_rln.sh  # repair upstream delivery_module librln install-name bug if present
 ```
 
 ### Important framing for the narration

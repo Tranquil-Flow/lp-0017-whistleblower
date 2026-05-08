@@ -95,6 +95,8 @@ nix build .#ffi      # Rust cdylib (~3-4 min)
 nix build .#plugin   # Qt6 plugin + standalone preview app
 nix build .#lgx      # portable .lgx package — the spec deliverable
 nix run  .#install   # copies plugin into Basecamp dev plugin dir
+lgs basecamp install # evaluator path: installs storage_module + delivery_module + whistleblower
+scripts/fix_delivery_rln.sh # workaround for upstream delivery_module librln install-name bug
 ```
 
 The `.lgx` file is the spec deliverable. Verified end-to-end on m4pro (aarch64-darwin) on 2026-05-04: `dist/whistleblower-plugin.lgx` (2.4MB). See [`ui/README.md`](ui/README.md) for the manual `cmake -B build` development workflow.

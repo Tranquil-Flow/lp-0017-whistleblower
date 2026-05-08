@@ -27,6 +27,10 @@ def main() -> None:
     require(demo.exists(), "scripts/demo.sh must exist for evaluator replay")
     require(demo.stat().st_mode & 0o111, "scripts/demo.sh must be executable")
 
+    rln_fix = ROOT / "scripts" / "fix_delivery_rln.sh"
+    require(rln_fix.exists(), "scripts/fix_delivery_rln.sh must exist to repair upstream delivery_module librln installs")
+    require(rln_fix.stat().st_mode & 0o111, "scripts/fix_delivery_rln.sh must be executable")
+
     body = read("scripts/demo.sh")
     for needle in [
         "RISC0_DEV_MODE=0",
@@ -34,6 +38,7 @@ def main() -> None:
         "lgs build",
         "lgs deploy",
         "lgs basecamp install",
+        "scripts/fix_delivery_rln.sh",
         "whistleblower-batch",
         "spel inspect",
     ]:
