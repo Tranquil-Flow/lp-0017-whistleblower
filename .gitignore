@@ -19,3 +19,4 @@ PR_DRAFT.md
 /.cache/
 /metadata.json
 /ui/ffi/.cargo/
+__pycache__/
