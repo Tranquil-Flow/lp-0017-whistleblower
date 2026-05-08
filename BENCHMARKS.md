@@ -69,7 +69,7 @@ Wall-clock latency (5-15s) is dominated by **block creation interval** (`block_c
 
 ### Devnet (LEZ public testnet) — pending credentials
 
-LEZ devnet is gated behind basic-auth credentials that are issued via Logos Discord (`#builder-hub`). We have not obtained those credentials yet. The devnet RPC URL itself is not published in any public Logos repo (verified by reading `logos-execution-zone` README + tutorials, `logos-co/lambda-prize` specs LP-0008/LP-0012, and the `lgs` CLI source — none ship a baked-in network list).
+LEZ devnet/testnet is still not published in public docs. Fresh check: `logos-co/logos-docs` at commit `c72fda5` documents LEZ local standalone mode (`localhost:3040`) and the separate Logos Blockchain public-testnet dashboard/faucet (`https://testnet.blockchain.logos.co/web/`), but it does **not** provide a LEZ sequencer RPC URL usable by `lgs deploy`/`wallet`. The older public testnet sequencer demo says basic-auth credentials are issued via Logos Discord (`#builder-hub`). We have not obtained those credentials yet. The devnet RPC URL itself is not published in any public Logos repo (verified by reading `logos-docs`, `logos-execution-zone` README + tutorials, `logos-co/lambda-prize` specs LP-0008/LP-0012, and the `lgs` CLI source — none ship a baked-in network list).
 
 | Operation | Accounts touched | Wall time | Risc0 executor time | CU cost |
 |---|---|---|---|---|
