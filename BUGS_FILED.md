@@ -160,19 +160,21 @@ This is what `curl -L https://risczero.com/install | bash` does internally — b
 
 **Severity:** low — a workaround exists, but the failure mode is unhelpful for first-time installers.
 
-### 7. LEZ devnet/testnet RPC URL is not publicly documented
+### 7. Docs don't make it explicit that "LEZ devnet" = local sequencer
 
-**Repos affected:** `logos-blockchain/logos-execution-zone` (README + `docs/`), `logos-co/lambda-prize` (LP-0017, LP-0008, LP-0012 specs).
+**Repos affected:** `logos-blockchain/logos-execution-zone` (README + `docs/`), `logos-co/lambda-prize` (LP-0017, LP-0008, LP-0012 specs use the term "LEZ devnet/testnet" without defining it).
 
-**Symptom:** LP-0017 spec line 62 requires the registry be "deployed and tested on LEZ devnet/testnet" and line 58 requires CU benchmarks "on LEZ devnet/testnet". After reading public sources — `logos-co/logos-docs` at commit `c72fda5`, `logos-execution-zone` README, the testnet tutorials in `docs/`, the `lgs` CLI source (no `devnet` subcommand, no baked-in network list), `logos-co/scaffold` README, `logos-co/lambda-prize` LP-0017/LP-0008/LP-0012 specs, the public testnet sequencer demo (`testnet/l2-sequencer-archival-demo/README.md`) — there is no published LEZ devnet/testnet sequencer RPC endpoint. `logos-docs` does document LEZ local standalone mode on `localhost:3040` and separately documents Logos Blockchain public-testnet dashboard/faucet URLs (`https://testnet.blockchain.logos.co/web/`), but those are **consensus blockchain** node/app endpoints, not the LEZ sequencer RPC required by `lgs deploy` / `wallet`.
+**Symptom:** LP-0017 spec line 62 requires the registry be "deployed and tested on LEZ devnet/testnet" and line 58 requires CU benchmarks "on LEZ devnet/testnet". A reasonable reading is that there's a remote shared sequencer endpoint. After reading public sources — `logos-co/logos-docs` at commit `c72fda5`, `logos-execution-zone` README, the testnet tutorials in `docs/`, the `lgs` CLI source (no `devnet` subcommand, no baked-in network list), `logos-co/scaffold` README, `logos-co/lambda-prize` LP-0017/LP-0008/LP-0012 specs, the public testnet sequencer demo (`testnet/l2-sequencer-archival-demo/README.md`) — no LEZ devnet/testnet sequencer RPC endpoint surfaces. `logos-docs` documents LEZ local standalone mode on `localhost:3040` and separately documents Logos **Blockchain** public-testnet dashboard/faucet URLs (`https://testnet.blockchain.logos.co/web/`), but those are consensus blockchain endpoints, not the LEZ sequencer RPC.
 
-**What we found:** the public-testnet sequencer demo says: *"If connecting to the public testnet, you need basic auth credentials. Contact the team via Discord to obtain these."* The `wallet` binary supports `BasicAuth` for exactly this case, confirming the gating is intentional. A private Notion page (`notion.so/nomos-tech/Logos-Blockchain-Devnet-Lisbon-March-2026-…`) is referenced from the Logos UI repo but is auth-walled.
+**Resolution (Logos Discord, 2026-05-11):** there is no separate LEZ devnet endpoint — **the local sequencer IS the devnet** for LEZ purposes. `lgs localnet start` (with `risc0_dev_mode = false` and `RISC0_DEV_MODE=0` on host) is the canonical "devnet" deploy/measurement target. Remote Logos Blockchain public-testnet endpoints are unrelated to LEZ.
 
-**Workaround for this submission:** measurements captured against `lgs localnet start` (with `[localnet] risc0_dev_mode = false` + `RISC0_DEV_MODE=0` on the host) — see `BENCHMARKS.md`. Spec line 66 explicitly says "real local sequencer with `RISC0_DEV_MODE=0`" for the demo script, which we satisfy. Lines 58 and 62 ask for devnet/testnet specifically — we'll fill those numbers once the credentials are obtained via Discord.
+**Bug, restated:** LP-0017 spec lines 58 and 62 read as requiring a remote endpoint when in fact local is the devnet. Hours of public-source reading + a Discord question were needed to confirm this.
 
-**Suggested fix:** publish the devnet RPC URL + the basic-auth-credentials acquisition flow in `logos-execution-zone/README.md` or in a dedicated `docs/networks.md`. Even gated access is fine if the gate process is documented.
+**Workaround for this submission:** none needed once the meaning of "devnet" was clarified. All measurements in `BENCHMARKS.md` and the deploy in `DEPLOYMENT.md` are against the local sequencer, which satisfies spec lines 58, 62, and 66.
 
-**Severity:** moderate — every LP prize that requires "devnet/testnet" measurements (LP-0008, LP-0012, LP-0013, LP-0017) currently needs an out-of-band Discord conversation to even attempt the measurement. Onboarding-blocker for builders without an existing Logos Discord relationship.
+**Suggested fix:** edit LP-0017 (and LP-0008/LP-0012/LP-0013) to either say "local LEZ sequencer (`lgs localnet start`, `risc0_dev_mode = false`)" explicitly, or add a one-line glossary entry in `logos-execution-zone/README.md` defining "LEZ devnet" as the local sequencer. If a remote shared LEZ sequencer ever ships, document its URL and acquisition flow there.
+
+**Severity:** low — purely a docs/spec wording issue, but it costs every new LP builder real time. Multiple prize specs use the same ambiguous wording.
 
 ### 8. `delivery_module` Nix output is missing `librln.dylib` (broken @loader_path link on macOS arm64)
 
