@@ -79,7 +79,7 @@ Then update `BENCHMARKS.md` with the resulting wall-clock + CU numbers.
 
 If the devnet program ID matches the localnet build (which it should
 since program_id is the SHA of the guest binary), the existing
-`whistleblower-registry-idl.json` is reusable as-is. If they differ
+`whistleblower-registry.idl.json` is reusable as-is. If they differ
 for any reason, regenerate the IDL or re-publish.
 
 ## Verification

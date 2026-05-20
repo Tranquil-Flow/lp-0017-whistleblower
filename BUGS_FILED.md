@@ -22,7 +22,7 @@ error occurred in cc-rs: command did not execute successfully
 
 **Root cause:** `spel-framework` and `spel-framework-core` both depend on `nssa_core` with `features = ["host"]`, which transitively pulls `bonsai-sdk → reqwest → rustls → ring`. When the guest is cross-compiled to `riscv32im-risc0-zkvm-elf`, `cc-rs` leaks the host's macOS `-arch arm64` and `-mmacosx-version-min` flags into the riscv32 cross-compiler, which doesn't understand them.
 
-**Workaround we used:** drop `spel-framework` from the guest's deps and write the program against raw `nssa_core::program::{ProgramInput, ProgramOutput, AccountPostState, ...}` directly. Hand-write the IDL JSON (see `whistleblower-registry-idl.json`) since `spel generate-idl` only scans `#[lez_program]` annotations.
+**Workaround we used:** drop `spel-framework` from the guest's deps and write the program against raw `nssa_core::program::{ProgramInput, ProgramOutput, AccountPostState, ...}` directly. Hand-write the IDL JSON (see `whistleblower-registry.idl.json`) since `spel generate-idl` only scans `#[lez_program]` annotations.
 
 **Suggested fix:** spel-framework-core should split `host` into a separate feature group from the proc-macro support so guests can use `#[lez_program]` without dragging in the bonsai dep tree. Or document the workaround prominently in the framework README.
 

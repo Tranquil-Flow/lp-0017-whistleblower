@@ -121,9 +121,9 @@ EOF
 # 8. Registry inspection command. If anchor_spike printed a PDA, write a concrete
 # command; otherwise write the template the narrator should fill from spike logs.
 if [[ -n "$PDA" ]]; then
-    echo "spel inspect $PDA --idl whistleblower-registry-idl.json --type AnchorEntry" > "$ART/10-spel-inspect-command.txt"
+    echo "spel inspect $PDA --idl whistleblower-registry.idl.json --type AnchorEntry" > "$ART/10-spel-inspect-command.txt"
 else
-    echo "spel inspect <pda-base58-from-05-anchor-spike-run.log> --idl whistleblower-registry-idl.json --type AnchorEntry" > "$ART/10-spel-inspect-command.txt"
+    echo "spel inspect <pda-base58-from-05-anchor-spike-run.log> --idl whistleblower-registry.idl.json --type AnchorEntry" > "$ART/10-spel-inspect-command.txt"
 fi
 
 cat <<EOF

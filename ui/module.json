@@ -1,0 +1,19 @@
+{
+  "author": "LP-0017 Whistleblower submission",
+  "category": "tools",
+  "dependencies": [
+    "storage_module",
+    "delivery_module"
+  ],
+  "description": "Censorship-resistant document upload + on-chain anchoring (LP-0017)",
+  "icon": "",
+  "main": {
+    "linux-amd64-dev": "whistleblower.so",
+    "linux-x86_64-dev": "whistleblower.so",
+    "darwin-arm64-dev": "whistleblower.dylib"
+  },
+  "manifestVersion": "0.1.0",
+  "name": "whistleblower",
+  "type": "ui",
+  "version": "0.1.0"
+}

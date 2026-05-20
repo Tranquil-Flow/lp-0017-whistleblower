@@ -33,7 +33,7 @@ whistleblower/
 ├── anchor_spike/             # standalone runner that proves Task 1.0B end-to-end
 ├── flake.nix                 # workspace-root nix flake (.#ffi / .#plugin / .#lgx / .#install)
 ├── dist/                     # built .lgx package (after `nix build .#lgx`)
-├── whistleblower-registry-idl.json   # hand-written SPEL IDL for the registry
+├── whistleblower-registry.idl.json   # hand-written SPEL IDL for the registry
 ├── ARCHITECTURE.md           # design with locked decisions + risk table
 ├── REGISTRY_SPIKE.md         # Task 1.0B spike result + rerun instructions
 ├── BENCHMARKS.md             # CU benchmarks — localnet captured, devnet TBD
@@ -125,7 +125,7 @@ Each anchored CID lives in its own PDA derived from `(program_id, sha256("lp0017
 
 ```bash
 # Compute the PDA for a known CID first (script helper TBD; for now use anchor_spike's printout).
-spel inspect <pda-base58> --idl whistleblower-registry-idl.json --type AnchorEntry
+spel inspect <pda-base58> --idl whistleblower-registry.idl.json --type AnchorEntry
 ```
 
 Returns the JSON-decoded `AnchorEntry { cid, cid_hash, metadata_hash, anchor_timestamp }`.
@@ -151,7 +151,7 @@ See [`ARCHITECTURE.md`](ARCHITECTURE.md) for the design + the locked decisions:
 | Functionality 4 idempotency | Re-submitting registered CID succeeds no-op | Built into `process_entry` in the guest; `LezRegistryClient` exercises it |
 | Functionality 5 | On-chain registry stores (CID, metadata_hash, anchor_timestamp) | `AnchorEntry` in `core/src/lib.rs`; one PDA per CID |
 | Functionality 6 | Document-indexing module reusable | `document-indexing` crate, no Qt dep, public `Publisher` API |
-| Usability | LEZ program IDL via SPEL framework | `whistleblower-registry-idl.json` (hand-written; `spel inspect` reads it) |
+| Usability | LEZ program IDL via SPEL framework | `whistleblower-registry.idl.json` (hand-written; `spel inspect` reads it) |
 | Usability | Basecamp app GUI | `ui/` Qt6/QML plugin → `dist/whistleblower-plugin.lgx` (2.4MB darwin-arm64) |
 | Reliability | Upload retries with backoff | `Publisher` wraps every adapter call in `with_retry` (5 retries, exponential) |
 | Reliability | Delivery dedup | `DurableDedupeStore` in `batch::run_batch_loop` (sled-backed) |

@@ -112,7 +112,7 @@ Narrate: "the batch tool is permissionless — anyone can run it; it just observ
 Show querying one of the anchored CIDs without a transaction:
 
 ```bash
-spel inspect <pda-base58> --idl whistleblower-registry-idl.json --type AnchorEntry
+spel inspect <pda-base58> --idl whistleblower-registry.idl.json --type AnchorEntry
 ```
 
 Expected output (JSON):
