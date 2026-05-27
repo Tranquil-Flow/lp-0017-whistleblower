@@ -51,6 +51,8 @@ jobs:
             -p whistleblower-mock-adapter --release -- -D warnings
 
       - name: cargo test (excludes guest + spike + adapter live tests)
+        env:
+          RISC0_SKIP_BUILD: "1"
         run: |
           cargo test --workspace \
             --exclude whistleblower-methods \
