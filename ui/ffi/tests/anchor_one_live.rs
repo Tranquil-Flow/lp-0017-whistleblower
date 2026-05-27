@@ -29,10 +29,7 @@ use whistleblower_ffi::{
 
 /// Call an FFI fn with a JSON string, return the JSON response as an owned String.
 /// Mirrors `WhistleblowerBackend::callFfiRaw` on the C++ side.
-fn call_ffi(
-    f: unsafe extern "C" fn(*const c_char) -> *mut c_char,
-    args: &Value,
-) -> Value {
+fn call_ffi(f: unsafe extern "C" fn(*const c_char) -> *mut c_char, args: &Value) -> Value {
     let cstr = CString::new(args.to_string()).expect("args contained null byte");
     let raw_out = unsafe { f(cstr.as_ptr()) };
     assert!(!raw_out.is_null(), "FFI returned null");
@@ -72,12 +69,19 @@ fn anchor_one_via_ffi_against_live_sequencer() {
     });
 
     let hash_resp = call_ffi(whistleblower_compute_metadata_hash, &metadata_args);
-    assert_eq!(hash_resp["success"], true, "compute_metadata_hash failed: {hash_resp}");
+    assert_eq!(
+        hash_resp["success"], true,
+        "compute_metadata_hash failed: {hash_resp}"
+    );
     let metadata_hash_hex = hash_resp["metadata_hash_hex"]
         .as_str()
         .expect("metadata_hash_hex missing")
         .to_owned();
-    assert_eq!(metadata_hash_hex.len(), 64, "metadata_hash_hex must be 32-byte hex");
+    assert_eq!(
+        metadata_hash_hex.len(),
+        64,
+        "metadata_hash_hex must be 32-byte hex"
+    );
 
     // 2. Reproduce what WhistleblowerBackend::anchorOneFfi (line 298) sends.
     //    `wallet_path` / `sequencer_url` are optional — when omitted, init_wallet
@@ -116,15 +120,16 @@ fn anchor_one_via_ffi_against_live_sequencer() {
         "anchor_timestamp must be > 0: {anchor_resp}"
     );
 
-    println!(
-        "anchored {cid} via FFI; cid_hash={cid_hash}, anchor_timestamp={anchor_timestamp}"
-    );
+    println!("anchored {cid} via FFI; cid_hash={cid_hash}, anchor_timestamp={anchor_timestamp}");
 
     // 4. Confirm the entry is queryable on-chain via the read path the
     //    Anchor button's follow-up display flow uses.
     let query_args = json!({ "cid": cid });
     let query_resp = call_ffi(whistleblower_query_by_cid, &query_args);
-    assert_eq!(query_resp["success"], true, "query_by_cid failed: {query_resp}");
+    assert_eq!(
+        query_resp["success"], true,
+        "query_by_cid failed: {query_resp}"
+    );
     assert_eq!(
         query_resp["found"], true,
         "freshly anchored CID was not found via query: {query_resp}"
@@ -163,7 +168,10 @@ fn anchor_one_via_ffi_is_idempotent() {
     let first_ts = first["entry"]["anchor_timestamp"].as_u64().unwrap();
 
     let second = call_ffi(whistleblower_anchor_one, &anchor_args);
-    assert_eq!(second["success"], true, "second anchor must succeed: {second}");
+    assert_eq!(
+        second["success"], true,
+        "second anchor must succeed: {second}"
+    );
     let second_ts = second["entry"]["anchor_timestamp"].as_u64().unwrap();
     assert_eq!(
         second_ts, first_ts,

@@ -1,0 +1,39 @@
+{
+  "name": "whistleblower",
+  "version": "0.1.0",
+  "description": "LP-0017: Censorship-resistant document upload + indexing on Logos — Storage, Delivery, LEZ registry anchoring, and Basecamp GUI",
+  "license": "MIT OR Apache-2.0",
+  "repository": "https://github.com/Tranquil-Flow/lp-0017-whistleblower",
+  "prize": "LP-0017",
+  "prize_status": "Open",
+  "prize_amount": "$400",
+  "crates": [
+    "core",
+    "indexing",
+    "batch",
+    "adapters/lez",
+    "adapters/logos",
+    "adapters/mock",
+    "adapters/qt",
+    "methods",
+    "methods/guest"
+  ],
+  "instructions": [
+    "register",
+    "register_batch",
+    "query",
+    "anchor_confirm"
+  ],
+  "basecamp_app": {
+    "path": "ui/",
+    "type": "qt6_qml_plugin",
+    "packaging": "lgx",
+    "load_verified": true,
+    "load_evidence": "Built via Nix flake and loaded in LogosBasecamp on 2026-05-09. Storage upload returned manifest CID; Delivery broadcast sent CID JSON envelope."
+  },
+  "spel_idl": "whistleblower-registry.idl.json",
+  "ci": ".github/workflows/ci.yml",
+  "demo_video_url": "https://youtu.be/lMu25io5K-k",
+  "submission_pr": "https://github.com/logos-co/lambda-prize/pull/58",
+  "bugs_filed": "BUGS_FILED.md"
+}

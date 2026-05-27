@@ -4,7 +4,11 @@ Per LP-0017 spec line 110, this file lists upstream Logos issues we encountered 
 
 ## Filed upstream
 
-_None yet — pending review by Logos team via #builder-hub before opening issues, to avoid duplicating known reports._
+The following issues were filed against upstream Logos repositories after building LP-0017:
+
+- **logos-co/spel#224** — spel-framework cannot be a guest dep on macOS arm64 (cc-rs leaks host flags into RISC0 cross-compile). https://github.com/logos-co/spel/issues/224
+- **logos-co/spel#225** — Claim::Authorized vs Claim::Pda(seed) is undocumented; leads to confusing InvalidProgramBehavior. https://github.com/logos-co/spel/issues/225
+- **logos-blockchain/logos-execution-zone#501** — No public LEZ sequencer RPC endpoint documented for lambda prize program deployment. https://github.com/logos-blockchain/logos-execution-zone/issues/501
 
 ## Worked around (candidates for upstream filing)
 
