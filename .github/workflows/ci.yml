@@ -34,6 +34,14 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-
 
+      - name: Install logos-blockchain-circuits prerequisite
+        run: |
+          set -euo pipefail
+          cd /tmp
+          curl -fLO https://github.com/logos-blockchain/logos-blockchain-circuits/releases/download/v0.4.2/logos-blockchain-circuits-v0.4.2-linux-x86_64.tar.gz
+          tar -xzf logos-blockchain-circuits-v0.4.2-linux-x86_64.tar.gz
+          mv logos-blockchain-circuits-v0.4.2-linux-x86_64 ~/.logos-blockchain-circuits
+
       - name: cargo fmt --check
         run: cargo fmt --all --check
 
