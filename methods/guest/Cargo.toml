@@ -9,10 +9,8 @@ name = "whistleblower_registry"
 path = "src/bin/whistleblower_registry.rs"
 
 [dependencies]
-# Raw nssa_core only — spel-framework's `host` feature on nssa_core forces
-# bonsai-sdk into the dep graph, which cross-compiles to riscv32im via ring
-# and fails on macOS arm64. We get IDL gen via `spel generate-idl` parsing
-# our source file later, separately from the build.
+# Raw nssa_core — we don't pull spel-framework here. IDL is generated
+# from our source file separately via `spel generate-idl`.
 nssa_core.workspace = true
 risc0-zkvm.workspace = true
 whistleblower-core = { path = "../../core" }
