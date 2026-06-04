@@ -33,7 +33,7 @@
   },
   "spel_idl": "whistleblower-registry.idl.json",
   "ci": ".github/workflows/ci.yml",
-  "demo_video_url": "https://youtu.be/lMu25io5K-k",
-  "submission_pr": "https://github.com/logos-co/lambda-prize/pull/58",
+  "demo_video_url": "",
+  "submission_pr": "",
   "bugs_filed": "BUGS_FILED.md"
 }
