@@ -90,11 +90,11 @@ impl LezRegistryClient {
     /// going through anchor.
     pub fn entry_pda_for(&self, cid: &CanonicalCid) -> AccountId {
         let cid_hash = compute_cid_hash(cid);
-        (&self.program.id(), &PdaSeed::new(cid_hash.0)).into()
+        AccountId::for_public_pda(&self.program.id(), &PdaSeed::new(cid_hash.0))
     }
 
     pub fn entry_pda_for_hash(&self, cid_hash: CidHash) -> AccountId {
-        (&self.program.id(), &PdaSeed::new(cid_hash.0)).into()
+        AccountId::for_public_pda(&self.program.id(), &PdaSeed::new(cid_hash.0))
     }
 
     fn next_timestamp(&self) -> u64 {

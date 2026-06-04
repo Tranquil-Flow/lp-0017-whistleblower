@@ -32,13 +32,16 @@ envelope over Logos Delivery, and anchor the CID on the LEZ registry.
    `dist/whistleblower-plugin.lgx` (2.4MB, darwin-arm64 variant with
    both .dylibs + manifest, all references portable).
 
-4. **Wire `whistleblower-batch`** to drop `--mock-delivery` once the
-   real Logos Delivery integration is in. Two options:
-   a) Add a parallel Rust adapter (`whistleblower-logos-adapter` —
-      see `adapters/logos/`) that drives `logos_host` as a subprocess
-      for headless use.
-   b) Restructure batch CLI to be a Basecamp plugin component that
-      reuses the same LogosAPI handle the UI plugin gets.
+4. ✅ ~~Give `whistleblower-batch` a real headless delivery source~~ — DONE.
+   `--envelopes-from <file>` replays broadcast `MetadataEnvelopeV1` records
+   through the real dedupe + batch + on-chain anchor pipeline (no
+   `--mock-delivery`); `--program-bin` targets the deployed program id.
+   What remains is a **headless live Waku subscription** for the CLI (real
+   Delivery is Waku + RLN behind a Qt `logos_host` module over
+   QtRemoteObjects). Options (Rust QtRemoteObjects client, or a Basecamp
+   plugin component reusing the UI's LogosAPI handle) are documented in
+   `adapters/logos/README.md`. Today the UI plugin owns the real Storage +
+   Delivery integration in-process.
 
 5. ✅ ~~Test the .lgx in a real Basecamp instance.~~ — DONE (2026-05-09).
    `lgs basecamp install` + `lgs basecamp launch alice` loads the plugin,
@@ -74,12 +77,15 @@ envelope over Logos Delivery, and anchor the CID on the LEZ registry.
    # or: ./LogosBasecamp-Desktop-vX.Y.Z.AppImage   # Linux
    ```
 
-6. **Devnet deployment + RISC0_DEV_MODE=0 numbers.** Awaits the Logos
-   team's devnet RPC URL. See `DEPLOYMENT.md` for the commands ready
-   to go.
+6. ✅ ~~Public-testnet deployment~~ — DONE. Deployed + exercised on the
+   public LEZ testnet (`testnet.lez.logos.co`), program `54c7f793…aa91`,
+   `RISC0_DEV_MODE=0` (public-tx proving is sequencer-side). Hashes + decodes
+   in `TESTNET_PROOF.md`; re-verify `bash scripts/verify-testnet.sh`. CU is
+   reported as deterministic deployed-ELF cycles (testnet hides per-tx CU);
+   rc3 absolute re-measure pending. See `DEPLOYMENT.md`.
 
-7. **Record the narrated video demo.** Script in `DEMO.md`. Recording
-   happens after #5 + #6.
+7. **Record the narrated video demo** against the public testnet. Script in
+   `DEMO.md`. The earlier localnet recording must be replaced.
 
 ## Build (development, local)
 

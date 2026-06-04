@@ -18,7 +18,7 @@
 //! re-deriving each PDA from the entry's CID and asserting it matches the
 //! pre_state's `account_id`.
 
-use borsh::{BorshDeserialize, BorshSerialize};
+use borsh::BorshDeserialize;
 use nssa_core::account::{AccountId, AccountWithMetadata};
 use nssa_core::program::{
     read_nssa_inputs, AccountPostState, Claim, PdaSeed, ProgramInput, ProgramOutput,
@@ -44,7 +44,10 @@ fn process_entry(
     // Verify the host pre-derived the right PDA for this CID. The runtime
     // also checks PDA-derivation when the claim is processed, but doing it
     // here gives a clearer error message and prevents wasted writes.
-    let expected_pda: AccountId = (self_program_id, &PdaSeed::new(cid_hash.0)).into();
+    // rc3 (v0.2.0-rc3) replaced the `(&ProgramId, &PdaSeed) -> AccountId` From
+    // impl with the explicit `AccountId::for_public_pda` constructor.
+    let expected_pda: AccountId =
+        AccountId::for_public_pda(self_program_id, &PdaSeed::new(cid_hash.0));
     assert!(
         pre.account_id == expected_pda,
         "WL-REG: pre_state account_id does not match expected PDA for cid",

@@ -2,6 +2,12 @@
 
 Spec line 58: "Document and measure the compute unit (CU) cost of a single-CID anchor and a 50-CID batch anchor on LEZ devnet/testnet."
 
+> **Note (2026-06-04):** the program is **deployed on the public LEZ testnet** (`testnet.lez.logos.co`) — see [`TESTNET_PROOF.md`](TESTNET_PROOF.md).
+>
+> **How CU is measured, and why it is the testnet figure.** The public testnet does not expose a per-transaction compute-unit value: the RISC0 executor computes cycle counts in `SessionInfo`, but `nssa/src/program.rs` consumes only `session_info.journal` and discards the cycles; no tx/block/receipt struct carries a cost field, and there is no `getTransactionReceipt` RPC (filed upstream — [`BUGS_FILED.md`](BUGS_FILED.md) #7). The RISC0 zkVM is **deterministic**, so the compute units consumed by a transaction depend only on `(program ELF, input)` — running the **deployed ELF** (`ImageID 54c7f793…aa91`) in the executor yields the *exact* cycle count it consumes on the testnet. CU below is therefore the executor cost of the deployed program, not a separate localnet program. The testnet runs the identical program families (`getProgramIds`), and anchor txs use the public path (sequencer-side execution), so this equivalence is exact for this tx class.
+>
+> ⚠️ **rc3 re-measurement pending.** The table below was captured against the **rc1 (`35d8df0d`) guest**. The deployed testnet program is the **rc3 (`cf3639d8`) build** (`ImageID 54c7f793…`). The executor-cycle figures must be re-captured against the rc3 ELF before resubmission (the program logic is unchanged, so the per-CID shape is expected to hold, but the absolute numbers must come from the deployed ELF). This is a heavy RISC0/localnet run via `scripts/measure_cu.sh`. **Follow-up infra note:** the hermetic `cargo risczero build` (and `lgs localnet`) require **Docker**; the M4 Pro build host does not currently have Docker installed, so this runs on a Docker-enabled host (install Docker on the M4 Pro, or run on the main machine). The deployed rc3 `.bin` already exists at `target/riscv32im-risc0-zkvm-elf/docker/whistleblower_registry.bin` (ImageID `54c7f793…`).
+
 ## Methodology
 
 Measurements come from the live integration tests in `adapters/lez/tests/live_registry.rs` (single + batch + 50-CID), which talk to a `lgs localnet start` sequencer through the real `WalletCore` API. Reproduce:
@@ -67,16 +73,22 @@ Wall-clock latency (5-15s) is dominated by **block creation interval** (`block_c
 
 50-CID batch confirmed working in a single transaction across both runs. **The spec's ≥10 floor has 5x headroom on the localnet sequencer.**
 
-### Devnet (LEZ public testnet) — pending credentials
+### Public LEZ testnet (`testnet.lez.logos.co`) — deployed; CU via deterministic deployed-ELF execution
 
-LEZ devnet/testnet is still not published in public docs. Fresh check: `logos-co/logos-docs` at commit `c72fda5` documents LEZ local standalone mode (`localhost:3040`) and the separate Logos Blockchain public-testnet dashboard/faucet (`https://testnet.blockchain.logos.co/web/`), but it does **not** provide a LEZ sequencer RPC URL usable by `lgs deploy`/`wallet`. The older public testnet sequencer demo says basic-auth credentials are issued via Logos Discord (`#builder-hub`). We have not obtained those credentials yet. The devnet RPC URL itself is not published in any public Logos repo (verified by reading `logos-docs`, `logos-execution-zone` README + tutorials, `logos-co/lambda-prize` specs LP-0008/LP-0012, and the `lgs` CLI source — none ship a baked-in network list).
+The earlier "devnet pending credentials" note is **obsolete**: a public, no-auth LEZ testnet now exists and the registry is deployed on it (program `54c7f793…aa91`; deploy + anchor lifecycle confirmed on chain — [`TESTNET_PROOF.md`](TESTNET_PROOF.md)).
 
-| Operation | Accounts touched | Wall time | Risc0 executor time | CU cost |
-|---|---|---|---|---|
-| `anchor_one` (single CID) | 1 | TBD | TBD | TBD |
-| `anchor_batch` (50 CIDs)  | 50 | TBD | TBD | TBD |
+**Testnet-measurable performance (captured live).** What the public testnet *does* expose, measured directly against it:
+- **Inclusion latency** — anchor txs confirm within seconds-to-minutes (the wallet's ~45s confirmation poll sometimes lapses before inclusion; all four lifecycle txs landed — see `TESTNET_PROOF.md`). Dominated by block cadence, not program compute.
+- **Payload size** — `anchor_one` instruction payload and the per-tx account list are small (one PDA for single, ≤50 for batch); the explorer's transaction view shows the serialized payload + proof size per tx.
 
-Devnet measurements will land once Evi posts the credentials request in Discord. `DEPLOYMENT.md` has the deploy + measurement commands ready. Expectation: executor time matches localnet (the program is the same); per-tx wall-clock will reflect devnet block cadence + any tx fee verification.
+**Per-transaction CU — not exposed by the testnet.** As explained at the top of this file, the testnet never persists a per-tx CU value (BUGS_FILED #7). CU is therefore obtained by executing the **deployed ELF** in the RISC0 executor — deterministic, so equal to on-chain CU.
+
+| Operation | Accounts touched | CU source | Executor cycles (rc3 ELF `54c7f793…`) |
+|---|---|---|---|
+| `anchor_one` (single CID) | 1 | deployed-ELF execution | **pending rc3 re-measure (M4 Pro)** |
+| `anchor_batch` (50 CIDs)  | 50 | deployed-ELF execution | **pending rc3 re-measure (M4 Pro)** |
+
+The rc1-guest figures in the localnet table above stand in until the rc3 re-measure lands; the program logic is identical between rc1 and rc3 (only the LEZ host API changed — `AccountId::for_public_pda`), so the per-CID shape is expected to carry over. `scripts/measure_cu.sh` runs the capture; `DEPLOYMENT.md` has the deploy commands.
 
 ## Expected shape
 

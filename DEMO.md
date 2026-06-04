@@ -1,6 +1,8 @@
 # Demo
 
-The submission video must be a narrated walkthrough (silent screencast is explicitly insufficient — see `~/Projects/logos-basecamp/SPECS/README.md` §"Demo requirements"). This file is the script.
+The submission video must be a narrated walkthrough (a silent screencast is explicitly insufficient — see `~/Projects/logos-basecamp/SPECS/README.md` §"Demo requirements"). This file is the script.
+
+> **Testnet-first.** The registry is deployed on the **public LEZ testnet** (`testnet.lez.logos.co`, program `54c7f793…aa91`). The recording leads with the live testnet evidence; the local sequencer appears only as optional white-box corroboration. The previously linked recording (`youtu.be/lMu25io5K-k`) predates the testnet deploy and shows the localnet flow — it must be re-recorded against the testnet before resubmission.
 
 ## What the spec requires the video to show
 
@@ -10,41 +12,25 @@ From `LP-0017.md` §Submission Requirements:
 3. The on-chain registry confirming the CID registration.
 4. Terminal output showing proof generation with `RISC0_DEV_MODE=0` so reviewers know real proving was used (not the dev shortcut).
 
+## Honesty framing (state this in the narration)
+
+- The **on-chain registry** is fully real and headless on the public testnet — deploy, anchor, idempotent re-anchor, and batch are confirmed on chain and independently re-verifiable.
+- **Upload → broadcast** (Logos Storage + Delivery) runs inside the **Basecamp UI plugin** via the real in-process `LogosAPIClient`. Real Logos Delivery is Waku + RLN behind a Qt `logos_host` module over QtRemoteObjects, so it runs in Basecamp (GUI), not headless.
+- The **batch tool** consumes the broadcast envelope. In the recording it is fed that envelope via `--envelopes-from` (the same `MetadataEnvelopeV1` the UI just broadcast over Delivery) because a headless Waku subscription is a separate integration (`adapters/logos/README.md`). Everything downstream of the envelope — dedupe, batching, idempotent anchoring against the live testnet — is real. Say this plainly; do not imply the CLI subscribes to Waku headless.
+
 ## Walkthrough script
 
-> **Status:** the UI plugin owns the real Storage + Delivery integration via in-process `LogosAPIClient` (`ui/src/WhistleblowerBackend.cpp`). The batch CLI still runs `--mock-delivery` for headless use — see `adapters/logos/README.md` for the headless-real-delivery design discussion. The on-chain anchoring path is real end-to-end on localnet.
+### Scene 0 — `RISC0_DEV_MODE=0` + real proof generation (~45s)
 
-### Setup (off-camera)
-
-```bash
-# Fresh sequencer, fresh state. Sequencer in non-dev mode (matches scaffold.toml).
-rm -rf .scaffold/state .scaffold/logs queue.db
-lgs localnet start                                    # respects [localnet] risc0_dev_mode = false
-lgs build
-lgs deploy --program-path target/riscv-guest/whistleblower-methods/whistleblower-programs/riscv32im-risc0-zkvm-elf/release/whistleblower_registry.bin
-export NSSA_WALLET_HOME_DIR=$PWD/.scaffold/wallet
-export RISC0_DEV_MODE=0   # required by spec line 67 — must be visible in env | grep RISC
-
-# Basecamp side: built + installed via lgs basecamp:
-lgs basecamp setup        # one-time per pinned basecamp rev
-lgs basecamp install      # builds .lgx + installs into the alice profile
-scripts/fix_delivery_rln.sh  # repair upstream delivery_module librln install-name bug if present
-```
-
-### Important framing for the narration
-
-LEZ wallets generate Risc0 proofs only on the **PrivacyPreserving** transaction path (token transfers, faucet claims). Our anchor flow uses **Public** transactions (the registry is public-by-design — see ARCHITECTURE.md), so the host-side proof generation step doesn't fire when we anchor.
-
-To satisfy spec line 67 ("show terminal output including proof generation"), Scene 0 below runs `wallet pinata claim` early in the recording. That faucet operation is a privacy-preserving tx and DOES emit visible Risc0 prover output under `RISC0_DEV_MODE=0`. The narration ties it to the rest of the system: same Risc0 stack proves the program-execution receipts that anchor txs would carry on a privacy-preserving registry variant — out of scope for this prize.
-
-### Scene 0 — Faucet claim shows real proof generation (~45s)
+LEZ wallets generate Risc0 proofs on the **PrivacyPreserving** path (token transfers, faucet claims). Our anchor flow uses **Public** transactions (the registry is public-by-design — see the README "Architecture & key decisions" section), which are sequencer-proved, so the host-side prover does not fire when we anchor. To satisfy spec line 67 ("show terminal output including proof generation"), run the faucet claim early — it is a privacy-preserving tx and emits visible Risc0 prover stages under `RISC0_DEV_MODE=0`.
 
 ```bash
 env | grep RISC0_DEV_MODE          # show RISC0_DEV_MODE=0
+wallet config set sequencer_addr https://testnet.lez.logos.co/
 wallet pinata claim --to <our-account-id>
 ```
 
-Expected on-screen — long visible delay (~30-90s on cold cache, faster after) with prover stages:
+Expected on-screen — a visible delay with prover stages:
 
 ```
 risc0_zkvm::host::server::prove::executor: execution complete
@@ -53,16 +39,16 @@ risc0_zkvm::host::server::prove::recursion: join
 risc0_zkvm::host::server::prove: receipt complete
 ```
 
-Narrate: "this is the real Risc0 proving stack — line 67 of the spec asks us to show this. Same prover handles every privacy-preserving tx on LEZ."
+Narrate: "this is the real Risc0 proving stack on the public testnet — line 67 asks us to show this; the same prover handles every privacy-preserving tx on LEZ. Our anchors are Public txs, sequencer-proved."
 
 ### Scene 1 — Architecture intro (~30s)
 
-Open `ARCHITECTURE.md`. Walk through:
-- The 4-layer breakdown (Basecamp app → adapter layer → indexing module → LEZ program / batch CLI)
-- The PDA-per-CID storage decision and why (idempotency, unbounded capacity)
-- Why the indexing module is Qt-free (reusable by any other Logos app)
+Walk through the design (README "Architecture & key decisions" + `REGISTRY_SPIKE.md`):
+- The 4-layer breakdown (Basecamp app → adapter layer → indexing module → LEZ program / batch CLI).
+- The PDA-per-CID storage decision and why (idempotency, unbounded capacity, O(1) anchor cost).
+- Why the indexing module is Qt-free (reusable by any other Logos app).
 
-### Scene 2 — Upload + broadcast (~60s)
+### Scene 2 — Upload + broadcast in Basecamp (~60s)
 
 Open the Whistleblower Basecamp UI. Pick a small (~10KB) markdown file. Fill metadata (title, description, tags). Click Upload.
 
@@ -77,86 +63,87 @@ Broadcasting envelope to /lp0017-whistleblower/1/cids/json
 ✓ Document published. CID is now discoverable.
 ```
 
-### Scene 3 — Discovery via the batch tool (~45s)
+Narrate: "real Logos Storage upload and real Logos Delivery broadcast, in-process via `LogosAPIClient`. The CID is now on the Delivery topic." Copy the broadcast `MetadataEnvelopeV1` into an envelope file for the next scene (the bytes that went over Delivery).
 
-In a second terminal window (visible on screen). For the demo recording, we use `--mock-delivery` to scope the headless component to its on-chain responsibility (subscribe + dedupe + batch-anchor); the real Storage/Delivery integration is what the UI plugin in Scene 2 just exercised.
+### Scene 3 — Batch tool anchors the CID on the testnet (~60s)
+
+Run the **real** `whistleblower-batch` binary against the **deployed testnet program** — no `--mock-delivery`. Feed it the envelope from Scene 2 (here via `--envelopes-from`; in production the same envelope arrives over the live Delivery subscription):
 
 ```bash
-./target/release/whistleblower-batch \
-  --topic /lp0017-whistleblower/1/cids/json \
-  --batch-size 3 \
-  --batch-interval-secs 10 \
-  --dedupe-store-path /tmp/wb-demo-queue.db \
-  --mock-delivery
+./scripts/demo.sh --batch
+# which runs, against testnet.lez.logos.co with the deployed program:
+#   whistleblower-batch --topic /lp0017-whistleblower/1/cids/json \
+#     --batch-size 3 --batch-interval-secs 10 \
+#     --program-bin target/riscv32im-risc0-zkvm-elf/docker/whistleblower_registry.bin \
+#     --envelopes-from demo/sample-envelopes.jsonl
 ```
 
 Expected log lines:
 ```
 whistleblower-batch starting:
   topic = /lp0017-whistleblower/1/cids/json
-  batch_size = 3
-  batch_interval = 10s
-  delivery = mock
-[whistleblower-batch] received envelope cid=bafy<...> (1/3 in queue)
-[whistleblower-batch] received envelope cid=bafy<...> (2/3 in queue)
-[whistleblower-batch] received envelope cid=bafy<...> (3/3 in queue)
-[whistleblower-batch] anchored batch: 3/3 entries hash=<tx-hash>
+  delivery = FILE replay (3 envelope(s) from demo/sample-envelopes.jsonl)
+[whistleblower-batch] anchored batch: 3/3 entries
+[whistleblower-batch] clean exit.
 ```
 
-The "anchored batch" line takes 5-15s — that's wall time dominated by the localnet's 15s block creation interval. Per `BENCHMARKS.md`, the registry program's actual zkVM executor cost is ~120ms for the whole 50-CID case. Anchor txs are Public so don't trigger host-side proof gen (that was Scene 0).
+Narrate: "the batch tool is permissionless — anyone can run it; it dedupes, batches, and anchors idempotently against the on-chain registry. The CID source here is the broadcast envelope fed from a file; the on-chain anchoring is real against the public testnet."
 
-Narrate: "the batch tool is permissionless — anyone can run it; it just observes the topic and anchors what it sees, idempotently."
+### Scene 4 — Registry confirms the CID on chain (~45s)
 
-### Scene 4 — Registry query (~30s)
+Re-verify the deployed lifecycle straight from the public sequencer (no transaction, no GUI):
 
-Show querying one of the anchored CIDs without a transaction:
+```bash
+./scripts/demo.sh           # verify mode — re-queries every deployed tx + decodes the entry PDAs
+```
+
+Expected: every tx returns its `Some(ProgramDeployment)` / `Some(Public)` verdict and both entry PDAs decode to a complete `AnchorEntry`. Then show a single-entry query without a transaction:
 
 ```bash
 spel inspect <pda-base58> --idl whistleblower-registry.idl.json --type AnchorEntry
 ```
 
-Expected output (JSON):
-```
-{
-  "cid": "bafy<...>",
-  "cid_hash": "<32 hex bytes>",
-  "metadata_hash": "<32 hex bytes>",
-  "anchor_timestamp": 1735689600123
-}
-```
-
-Narrate: "no transaction needed — anyone with the CID hash can derive the PDA and read the entry directly".
+Narrate: "no transaction needed — anyone with the CID hash derives the PDA and reads the entry directly off the public testnet."
 
 ### Scene 5 — CU benchmark (~20s)
 
-Show the BENCHMARKS.md numbers in a tile:
+Show the `BENCHMARKS.md` framing:
+
 ```
-single-CID anchor: ~6-12 ms zkVM executor time
-50-CID batch anchor: ~120 ms total (~2.5 ms per CID amortized)
+single-CID anchor : deterministic deployed-ELF executor cycles (≈ on-chain CU)
+50-CID batch       : ~50× single + fixed per-tx overhead; per-CID cost ~constant
 ```
 
-Mention: "These are zkVM executor times — the meaningful CU figure on LEZ for our public-tx anchor flow. Devnet wall-time numbers are pending the public testnet RPC URL."
+Narrate: "the public testnet does not persist a per-tx compute-unit value (we filed that upstream), so CU is the executor-cycle cost of the deployed ELF — deterministic, therefore equal to the on-chain cost. Absolute rc3 figures are a pending re-measure; the per-CID shape is the headline." (Do **not** claim the testnet exposes CU.)
 
 ### Scene 6 — Wrap (~15s)
 
-Briefly:
-- "All code is at github.com/<user>/whistleblower under MIT/Apache 2.0."
-- "The submission PR is at logos-co/lambda-prize#<N>."
-- "Bugs we filed upstream during the build: see BUGS_FILED.md."
+- "All code is at github.com/Tranquil-Flow/lp-0017-whistleblower under MIT/Apache-2.0."
+- "The registry is deployed on the public LEZ testnet — program `54c7f793…`, explorer at explorer.testnet.lez.logos.co."
+- "Upstream issues we filed/queued during the build: see `BUGS_FILED.md`."
 
-Total run time target: 3-4 minutes.
+Total run time target: 3–4 minutes.
 
 ## Recording checklist
 
-- [ ] Terminal font size large enough to read at 1080p (use a 18-22pt font).
+- [ ] Terminal font size large enough to read at 1080p (18–22pt).
 - [ ] `RISC0_DEV_MODE=0` is visible in `env | grep RISC` near the start.
+- [ ] `wallet config` shows `sequencer_addr = https://testnet.lez.logos.co/` (real network on camera).
 - [ ] Audio levels normalised (no clipping).
 - [ ] Captions / subtitles for accessibility.
-- [ ] All file paths shown are reproducible — no `/Users/evinova/...` in the recording (use `$PWD` or the deploy script's canonical location).
+- [ ] No `/Users/evinova/...` paths visible — use `$PWD` or repo-relative paths.
+- [ ] The batch scene is narrated honestly: envelope fed from a file; on-chain anchoring is real on the testnet.
 
 ## Reproducibility script
 
-`scripts/demo.sh` now prepares the reproducible terminal side of the demo: non-dev localnet, registry build/deploy, idempotent anchor spike, live LEZ adapter tests, Basecamp `.lgx` install, batch CLI build, and ready-to-run commands for the on-camera batch + `spel inspect` scenes. The UI upload/broadcast scene remains human-driven inside Basecamp because file selection and module loading are GUI interactions.
+`scripts/demo.sh` is the reproducible terminal side of the demo:
+
+- **default (verify)** — re-verifies the deployed deploy/anchor/dup/batch lifecycle on the public testnet, read-only, clone-and-run safe (only needs `curl`+`python3`, or `wallet` for the richer PDA decode).
+- **`--batch`** — runs the real `whistleblower-batch` tool against the deployed testnet program from an envelope file (no mock).
+- **`--full`** — fresh build + deploy + lifecycle on the testnet, then `--batch`.
+- **`--localnet`** — the spec-literal `RISC0_DEV_MODE=0` local-sequencer path, retained as corroboration.
+
+The Basecamp upload/broadcast scene (Scene 2) is human-driven inside Basecamp because file selection and module loading are GUI interactions.
 
 Validate demo artifacts with:
 

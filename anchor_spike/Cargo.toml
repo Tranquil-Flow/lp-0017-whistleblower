@@ -8,12 +8,24 @@ license.workspace = true
 name = "anchor_spike"
 path = "src/main.rs"
 
+# Public-testnet deploy + anchor-lifecycle driver. Deploys the rc3 guest with a
+# typed ProgramDeploymentTransaction (capturing the deploy tx hash that
+# `wallet deploy-program` discards), then runs the anchor lifecycle, capturing
+# every tx hash so the evidence is chain-info-verifiable from any machine.
+[[bin]]
+name = "testnet_lifecycle"
+path = "src/bin/testnet_lifecycle.rs"
+
 [dependencies]
 nssa_core = { workspace = true, features = ["host"] }
+nssa.workspace = true
+common.workspace = true
+sequencer_service_rpc.workspace = true
 wallet.workspace = true
 document-indexing = { path = "../indexing" }
 whistleblower-core = { path = "../core" }
 whistleblower-lez-adapter = { path = "../adapters/lez" }
 anyhow = "1"
+borsh.workspace = true
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 hex.workspace = true

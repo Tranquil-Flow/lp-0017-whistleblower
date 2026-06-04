@@ -2,6 +2,8 @@
 
 Per LP-0017 spec line 110, this file lists upstream Logos issues we encountered while building. Some are filed, some are workarounds we documented here in lieu of an upstream report.
 
+> **Ready-to-file drafts:** [`docs/upstream-issues/`](docs/upstream-issues/) holds the strongest of these written up for direct `gh issue create` against the correct repos (delivery `librln`, SPEL hashed-seed, testnet CU, scaffold template rot, liblogos gtest timeout). Filing is a deliberate step by the submitter; once filed, each issue URL gets recorded back here.
+
 ## Filed upstream
 
 - **logos-blockchain/logos-blockchain-circuits#33** (CLOSED 2026-05-27 by maintainer) — README missing install path documentation for downstream tools (`~/.logos-blockchain-circuits` / `LOGOS_BLOCKCHAIN_CIRCUITS`). Maintainer closed noting the versioning concern belongs against `logos-blockchain-node` (the actual consumer), and confirmed the team is moving from binary releases to library-based circuits, which addresses the underlying first-run install panic. https://github.com/logos-blockchain/logos-blockchain-circuits/issues/33
@@ -96,6 +98,8 @@ This is what `curl -L https://risczero.com/install | bash` does internally — b
 
 ### 4. Docs don't make it explicit that "LEZ devnet" = local sequencer (resolved by Discord clarification)
 
+> **⚠️ SUPERSEDED (2026-06-04).** A **public, no-auth LEZ testnet now exists** at `https://testnet.lez.logos.co/` and the registry is deployed on it ([`TESTNET_PROOF.md`](TESTNET_PROOF.md)). The 2026-05-11 Discord ruling that "the local sequencer IS the devnet / no remote endpoint exists" is **obsolete**. This entry is retained only as a record of the time cost the ambiguity caused; the load-bearing deploy + evidence for this submission are on the public testnet, not localnet. The underlying wording suggestion (specs say "devnet/testnet" without defining it) still stands.
+
 **Repos affected:** `logos-blockchain/logos-execution-zone` (README + `docs/`), `logos-co/lambda-prize` (LP-0017, LP-0008, LP-0012 specs use the term "LEZ devnet/testnet" without defining it).
 
 **Symptom:** LP-0017 spec line 62 requires the registry be "deployed and tested on LEZ devnet/testnet" and line 58 requires CU benchmarks "on LEZ devnet/testnet". A reasonable reading is that there's a remote shared sequencer endpoint. After reading public sources — `logos-co/logos-docs` at commit `c72fda5`, `logos-execution-zone` README, the testnet tutorials in `docs/`, the `lgs` CLI source (no `devnet` subcommand, no baked-in network list), `logos-co/scaffold` README, `logos-co/lambda-prize` LP-0017/LP-0008/LP-0012 specs, the public testnet sequencer demo (`testnet/l2-sequencer-archival-demo/README.md`) — no LEZ devnet/testnet sequencer RPC endpoint surfaces. `logos-docs` documents LEZ local standalone mode on `localhost:3040` and separately documents Logos **Blockchain** public-testnet dashboard/faucet URLs (`https://testnet.blockchain.logos.co/web/`), but those are consensus blockchain endpoints, not the LEZ sequencer RPC.
@@ -135,3 +139,31 @@ After applying the fix, the publish flow runs end-to-end: storage_module stores 
 **Suggested fix:** add a `postFixup` (or equivalent) phase to `logos-delivery-module`'s flake that (a) copies `${zerokit}/lib/librln.dylib` into the module's install dir, (b) `install_name_tool -id @loader_path/librln.dylib` on the copy, and (c) `install_name_tool -change <build-path> @loader_path/librln.dylib liblogosdelivery.dylib`. The Cargo-side fix is to set `cargo:rustc-link-arg=-Wl,-rpath,@loader_path` in a build script for the FFI crate so the load command emerges as `@rpath/librln.dylib` and the install dir RPATH resolution works without rewriting.
 
 **Severity:** high — without the workaround, `delivery_module` cannot load at all on macOS arm64, which blocks every Basecamp app that uses Logos Delivery (LP-0017 specifically; potentially LP-0008/LP-0012/LP-0013 if they also touch Delivery).
+
+### 6. SPEL IDL `IdlSeed` cannot express a hashed / domain-separated PDA seed
+
+**Repos affected:** `logos-co/spel` (`spel-framework-core/src/idl.rs` `IdlSeed`, the `#[account(pda = …)]` macro, and `spel pda`).
+
+**Symptom:** the `whistleblower-registry` entry PDA seed is `sha256(CID_HASH_DOMAIN ‖ cid)` (= `whistleblower_core::cid_hash(cid)`) — the domain-separated-hash pattern recommended for collision-resistant, second-preimage-safe PDAs. SPEL's `IdlSeed` enum is `const | account | arg` only; there is no "hash" or "derived" seed kind. `spel generate-idl` therefore emits the seed as `{kind: arg, path: cid}` (the closest expressible form), and `spel pda` derives the PDA from the **raw cid bytes**, not from `sha256(domain ‖ cid)` — i.e. it computes the wrong address, silently.
+
+**Root cause:** `IdlSeed` (`spel-framework-core/src/idl.rs:107-116`) has no variant for applying a hash to a seed component, and the `#[account(pda = …)]` attribute only accepts `arg("name")` / `account("name")` / `const`-style seeds.
+
+**Workaround we used:** the IDL is generated faithfully for everything SPEL *can* express (instruction args, account types incl. `AnchorEntry`, used by `spel inspect … --type AnchorEntry`), and the exact seed derivation is documented in the IDL's `provenance.pda_seed_derivation` field + `idl/whistleblower_registry.rs`. PDA derivation in code uses `whistleblower_core::cid_hash()` / the LEZ adapter's `entry_pda_for(...)`, never `spel pda`.
+
+**Suggested fix:** add an `IdlSeed::Hash { algo: "sha256", domain: String, components: Vec<IdlSeed> }` (or a `hash = sha256(const("…"), arg("cid"))` macro form) so domain-separated-hash PDAs — the secure default — are expressible, and `spel pda` can derive them.
+
+**Severity:** moderate — `spel pda` gives wrong addresses for any program using the recommended hashed-seed pattern, with no error; only programs whose seed is a raw arg/const are correctly derivable today.
+
+### 7. Public LEZ testnet does not expose (or persist) per-transaction compute units
+
+**Repos affected:** `logos-blockchain/logos-execution-zone` (`nssa/src/program.rs`, `common/src/{transaction,block}.rs`, `sequencer/service/rpc/src/lib.rs`, `indexer/service/rpc/src/lib.rs`), `explorer_service`.
+
+**Symptom:** LP-0017 line 62 / LP-0002 line 49 / LP-0005 line 55 require documenting per-operation compute-unit (CU) cost "on LEZ devnet/testnet". On the public testnet (commit `cf3639d8`) there is no way to read a transaction's CU: `getTransactionReceipt`/`getReceipt` → `-32601 Method not found` (live), and none of the sequencer's 11 RPC methods (`sequencer/service/rpc/src/lib.rs:38-92`) returns execution cost. The data is not merely hidden — it is never persisted.
+
+**Root cause:** the RISC0 executor computes cycle counts in `SessionInfo`, but `nssa/src/program.rs:80` consumes only `session_info.journal` and discards the cycle data. `ProgramOutput` (`nssa/core/src/program.rs`), `StateDiff` (`nssa/src/validated_state_diff.rs`), `NSSATransaction` (`common/src/transaction.rs`) and `Block`/`BlockHeader` (`common/src/block.rs`) carry no cost field, so even the indexer + explorer have nothing to show. Fees are explicitly TODO (`nssa/src/program.rs:19`; the `GasConfig` in `wallet/src/config.rs:168` is dead/unreferenced).
+
+**Workaround we used:** CU is measured by executing the **deployed testnet ELF** (ImageID `54c7f793…aa91`) in the RISC0 executor locally and reading `session_info` cycle counts. The zkVM is deterministic, so this equals the cycles consumed on the testnet for the same program + input. `getProgramIds` confirms the testnet runs the identical program families, so the equivalence holds. The CU figures in `BENCHMARKS.md` are labeled accordingly; testnet wall-clock inclusion latency + payload/proof sizes are captured directly from the public testnet.
+
+**Suggested fix:** capture `session_info` cycle counts in `nssa/src/program.rs`, thread them through `ProgramOutput` → tx/block metadata, and add a `getTransactionReceipt` RPC returning `{ tx_hash, compute_units, … }`. This unblocks every prize that asks for testnet CU benchmarks.
+
+**Severity:** moderate — multiple λPrize specs require testnet CU benchmarks that the current testnet cannot provide; builders can only offer deterministic-executor-equivalent figures.

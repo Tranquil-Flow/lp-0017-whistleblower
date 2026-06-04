@@ -4,7 +4,7 @@ LP-0017 reference implementation: a censorship-resistant document upload + index
 
 Anyone can upload a document → its CID is broadcast over Logos Delivery → any altruistic third party (or the publisher themselves) can later batch-anchor accumulated CIDs to a LEZ program. The on-chain registry stores `(CID, metadata_hash, anchor_timestamp)` per document and is queryable by CID hash without a transaction.
 
-> **Status:** built end-to-end — registry program + indexing module + LEZ adapter exercised against a live local sequencer in non-dev mode (`risc0_dev_mode = false`, `RISC0_DEV_MODE=0`); 50-CID batch validated at ~120ms zkVM executor time (~2.5ms/CID amortized — see `BENCHMARKS.md`); FFI anchor path verified through the C ABI by `anchor_one_via_ffi_against_live_sequencer` + idempotent variant against a live sequencer; Qt6/QML Basecamp UI plugin built into a portable `.lgx` package via nix and smoke-tested in real Basecamp on 2026-05-09 (`lgs basecamp install` + `lgs basecamp launch alice`; storage upload returned a manifest CID and delivery broadcast sent the CID JSON envelope). Per Logos Discord (2026-05-11), the local sequencer **is** the LEZ devnet — the benchmark numbers above are devnet numbers. Repo migration to `https://github.com/Tranquil-Flow/lp-0017-whistleblower` complete 2026-05-17. Narrated demo video: <https://youtu.be/lMu25io5K-k>.
+> **Status:** the registry program is **deployed and exercised on the public LEZ testnet** (`testnet.lez.logos.co`, real consensus, `RISC0_DEV_MODE=0`, 2026-06-03) — program `54c7f793…aa91`; deploy + `anchor_one` + idempotent re-anchor + `anchor_batch` all confirmed on chain (`wallet chain-info` → `Some(ProgramDeployment)`/`Some(Public)`), and both entry PDAs decode to the expected `AnchorEntry`. Full hashes, decodes, and reproduction: [`TESTNET_PROOF.md`](TESTNET_PROOF.md) — re-verify live with `bash scripts/verify-testnet.sh`. Built end-to-end besides: indexing module + LEZ adapter, and a Qt6/QML Basecamp UI plugin packaged into a portable `.lgx` via nix and smoke-tested in real Basecamp on 2026-05-09. Earlier local-sequencer runs (`REGISTRY_SPIKE.md`, `BENCHMARKS.md`) are retained as **corroboration** — the CU profile stays localnet-sourced because the public testnet doesn't expose per-tx executor logs. (The 2026-05-11 Discord note that "local *is* the devnet" is now **obsolete**: a public testnet exists and is the load-bearing evidence.) Repo: `https://github.com/Tranquil-Flow/lp-0017-whistleblower`. ⚠️ **Demo video re-record pending** — the linked <https://youtu.be/lMu25io5K-k> predates the testnet run and shows the localnet flow; it will be replaced with a testnet recording before resubmission.
 
 ## Repository layout
 
@@ -33,18 +33,36 @@ whistleblower/
 ├── anchor_spike/             # standalone runner that proves Task 1.0B end-to-end
 ├── flake.nix                 # workspace-root nix flake (.#ffi / .#plugin / .#lgx / .#install)
 ├── dist/                     # built .lgx package (after `nix build .#lgx`)
-├── whistleblower-registry.idl.json   # hand-written SPEL IDL for the registry
-├── ARCHITECTURE.md           # design with locked decisions + risk table
-├── REGISTRY_SPIKE.md         # Task 1.0B spike result + rerun instructions
-├── BENCHMARKS.md             # CU benchmarks — localnet captured, devnet TBD
-├── DEPLOYMENT.md             # Local + devnet deployment commands
+├── whistleblower-registry.idl.json   # SPEL-generated IDL (spel generate-idl; regen via scripts/regen-idl.sh)
+├── idl/whistleblower_registry.rs      # parse-only #[lez_program] mirror spel generate-idl reads (never compiled)
+├── TESTNET_PROOF.md          # PRIMARY EVIDENCE — public-testnet deploy + lifecycle, hashes, decodes
+├── anchor_spike/src/bin/testnet_lifecycle.rs  # typed deploy + anchor-lifecycle driver (captures hashes)
+├── scripts/verify-testnet.sh # reviewer re-verification (read-only; decodes the entry PDAs via wallet)
+├── scripts/ci-verify-testnet.sh # on-push CI check (raw JSON-RPC; no wallet/secrets)
+├── REGISTRY_SPIKE.md         # local-sequencer spike (historical corroboration)
+├── BENCHMARKS.md             # CU profile (localnet-sourced; testnet hides executor logs)
+├── DEPLOYMENT.md             # deployment commands (local + public testnet)
 ├── DEMO.md                   # End-to-end demo script for the submission video
 └── BUGS_FILED.md             # Upstream Logos issues filed during the build
 ```
 
+## Quick start (public testnet — clone and run)
+
+The fastest way to confirm the deployed registry is real. Re-verifies the full deploy → anchor → idempotent re-anchor → batch lifecycle on the public LEZ testnet, read-only — no build, no faucet, no localnet, no mock:
+
+```bash
+# Curl-only (no toolchain): confirms every deployed tx is live on the public sequencer.
+bash scripts/demo.sh           # or: bash scripts/ci-verify-testnet.sh
+
+# Richer check (decodes the entry PDAs) — needs the `wallet` binary (LEZ tag v0.1.2):
+bash scripts/verify-testnet.sh
+```
+
+Program `54c7f793…aa91` on `https://testnet.lez.logos.co/` — full hashes + decodes in [`TESTNET_PROOF.md`](TESTNET_PROOF.md). To run a fresh deploy + lifecycle or the real batch tool against the testnet, see `scripts/demo.sh --full` / `--batch` (needs a funded testnet wallet).
+
 ## Quick start (local sequencer)
 
-You need: macOS arm64 with `cargo`, `docker`, and the Logos toolchain installed via the order documented in [`reference_logos_repos.md`](../../../.claude/projects/-Users-evinova-Projects/memory/reference_logos_repos.md). Verified: `lgs 0.1.1`, `spel 0.2.0`, `cargo-risczero 3.0.5`, `r0vm 3.0.5`, `rzup 0.5.1`, `logos-blockchain-circuits v0.4.2`.
+You need: macOS arm64 with `cargo`, `docker`, and the Logos toolchain. Install order matters — `logos-blockchain-circuits` is a build-time dependency of `spel`, so install it first. Verified versions: `lgs 0.1.1`, `spel 0.2.0`, `cargo-risczero 3.0.5`, `r0vm 3.0.5`, `rzup 0.5.1`, `logos-blockchain-circuits v0.4.2`. (For the public testnet, build the `wallet` from LEZ tag `v0.1.2` — see [`TESTNET_PROOF.md`](TESTNET_PROOF.md).)
 
 ```bash
 # 1. Bring up a local LEZ sequencer (~3 min on warm cache).
@@ -103,21 +121,25 @@ The `.lgx` file is the spec deliverable. Verified end-to-end on m4pro (aarch64-d
 
 ## Use the batch anchor CLI
 
-The CLI is the spec's "permissionless batch anchor tool" (line 33). It owns the on-chain side end-to-end: dedupe ledger, batching window, retry, idempotent anchor against the deployed program.
+The CLI is the spec's "permissionless batch anchor tool" (line 33). It owns the on-chain side end-to-end: dedupe ledger, batching window, retry, idempotent anchor against the deployed program. The CID source is the `DeliveryClient` trait, so the same binary works against several transports:
 
-The Storage / Delivery integration the CLI subscribes to is currently mocked behind `--mock-delivery`. The real Storage + Delivery integration ships in the Basecamp UI plugin (`ui/`, see [`ui/README.md`](ui/README.md)) — that plugin uses Logos Core's in-process `LogosAPIClient` to call the storage / delivery modules directly. A headless CLI equivalent would need either a Rust QtRemoteObjects client against the per-module `logos_host` process, or a Basecamp-plugin variant of this binary that reuses the same `LogosAPI` handle. Both options + tradeoffs are documented in [`adapters/logos/README.md`](adapters/logos/README.md). For now, the CLI runs in mock-delivery mode for development and CI:
+- **`--envelopes-from <file>` (real, headless).** Replays the exact `MetadataEnvelopeV1` records the Delivery topic carries (newline-delimited JSON) through the real dedupe + batch + on-chain anchor pipeline — no mock, no Qt/Waku dependency. This is what the reproducible demo and CI use, and a legitimate operating mode for anyone who already holds a list of broadcast envelopes. Point `--program-bin` at the **deployed** program `.bin` so PDAs match the on-chain program id (a docker `cargo risczero build` and the in-process `embed_methods` build can produce different ImageIDs).
+- **Live Logos Delivery (Waku) subscription** — the production transport. Real Delivery is Waku + RLN behind the Logos Core `delivery_module`, reachable as a Qt `logos_host` process over QtRemoteObjects, so it runs inside the Basecamp UI plugin (`ui/`, in-process `LogosAPIClient`). A headless Rust equivalent (QtRemoteObjects client, or RLN-membership management against Waku directly) is a separate integration — options + tradeoffs in [`adapters/logos/README.md`](adapters/logos/README.md).
+- **`--mock-delivery`** — in-memory dev client only.
 
 ```bash
-NSSA_WALLET_HOME_DIR=$PWD/.scaffold/wallet \
+# Real, headless anchor against the deployed public-testnet program:
+NSSA_WALLET_HOME_DIR=$WALLET_HOME \
   ./target/release/whistleblower-batch \
     --topic /lp0017-whistleblower/1/cids/json \
     --batch-size 10 \
     --batch-interval-secs 30 \
     --dedupe-store-path queue.db \
-    --mock-delivery
+    --program-bin target/riscv32im-risc0-zkvm-elf/docker/whistleblower_registry.bin \
+    --envelopes-from demo/sample-envelopes.jsonl
 ```
 
-Flags accept env vars too: `WL_TOPIC`, `WL_BATCH_SIZE`, `WL_BATCH_INTERVAL_SECS`, `WL_DEDUPE_PATH`, `WL_MOCK_DELIVERY`. SIGINT triggers a graceful flush.
+Flags accept env vars too: `WL_TOPIC`, `WL_BATCH_SIZE`, `WL_BATCH_INTERVAL_SECS`, `WL_DEDUPE_PATH`, `WL_ENVELOPES_FROM`, `WL_PROGRAM_BIN`, `WL_MOCK_DELIVERY`. SIGINT triggers a graceful flush.
 
 ## Inspect on-chain registry entries
 
@@ -132,11 +154,11 @@ Returns the JSON-decoded `AnchorEntry { cid, cid_hash, metadata_hash, anchor_tim
 
 ## Architecture & key decisions
 
-See [`ARCHITECTURE.md`](ARCHITECTURE.md) for the design + the locked decisions:
+The locked design decisions (`REGISTRY_SPIKE.md` has the on-chain spike detail):
 
 - **PDA-per-CID** registry storage (not single-root-PDA) — O(1) anchor cost, unbounded capacity, idempotency-by-default-state-check.
-- **Raw `nssa_core` guest** (not SPEL macros) — spel-framework forces `bonsai-sdk` into the riscv32im build via the `host` feature on `nssa_core`, which fails to cross-compile (ring/Apple Metal). IDL is hand-written.
-- **Adapter-based reusable indexing module** — Qt-free Rust core, `Arc<dyn StorageClient + DeliveryClient + RegistryClient>` boundary, mock + real LEZ adapters in tree, real Logos Core module adapters deferred to Phase 1.7.
+- **Raw `nssa_core` guest** (not SPEL macros) — the deployed guest ELF (`54c7f793…aa91`) is hand-rolled `nssa_core` for a lean cross-compile. The IDL is still **machine-generated via `spel generate-idl`** from a parse-only `#[lez_program]` mirror at `idl/whistleblower_registry.rs` that is never compiled (regen: `bash scripts/regen-idl.sh`). `spel generate-idl` only AST-parses its input, so this pulls nothing into the guest build — the earlier "spel-framework forces bonsai-sdk into the riscv32im build" claim was wrong (it's a `k256` host feature, off by default, with no bonsai dep anywhere in LEZ). One documented gap: SPEL's seed model (`const|account|arg`) can't express our `sha256(domain‖cid)` PDA seed — filed upstream (see [`BUGS_FILED.md`](BUGS_FILED.md)).
+- **Adapter-based reusable indexing module** — Qt-free Rust core, `Arc<dyn StorageClient + DeliveryClient + RegistryClient>` boundary. Real LEZ registry adapter + a real headless file-replay `DeliveryClient` (`--envelopes-from`) in tree; the UI plugin supplies real Storage + Delivery via in-process `LogosAPIClient`. A headless live Waku Delivery client (Waku + RLN over QtRemoteObjects) is a documented separate integration — see [`adapters/logos/README.md`](adapters/logos/README.md).
 - **Wallet-free upload + broadcast** — only on-chain anchoring needs a wallet, satisfying spec line 17 ("without identifying the uploader").
 - **Topic** = `/lp0017-whistleblower/1/cids/json` (LIP-23 shape). Constant in `whistleblower-core`.
 
@@ -151,14 +173,14 @@ See [`ARCHITECTURE.md`](ARCHITECTURE.md) for the design + the locked decisions:
 | Functionality 4 idempotency | Re-submitting registered CID succeeds no-op | Built into `process_entry` in the guest; `LezRegistryClient` exercises it |
 | Functionality 5 | On-chain registry stores (CID, metadata_hash, anchor_timestamp) | `AnchorEntry` in `core/src/lib.rs`; one PDA per CID |
 | Functionality 6 | Document-indexing module reusable | `document-indexing` crate, no Qt dep, public `Publisher` API |
-| Usability | LEZ program IDL via SPEL framework | `whistleblower-registry.idl.json` (hand-written; `spel inspect` reads it) |
+| Usability | LEZ program IDL via SPEL framework | `whistleblower-registry.idl.json` — **generated via `spel generate-idl`** from `idl/whistleblower_registry.rs` (regen: `bash scripts/regen-idl.sh`); `spel inspect … --type AnchorEntry` decodes on-chain entries. instructions/accounts emitted verbatim by spel; PDA-seed caveat documented in the IDL `provenance` + [`BUGS_FILED.md`](BUGS_FILED.md) |
 | Usability | Basecamp app GUI | `ui/` Qt6/QML plugin → `dist/whistleblower-plugin.lgx` (2.4MB darwin-arm64) |
 | Reliability | Upload retries with backoff | `Publisher` wraps every adapter call in `with_retry` (5 retries, exponential) |
 | Reliability | Delivery dedup | `DurableDedupeStore` in `batch::run_batch_loop` (sled-backed) |
 | Reliability | Batch tool resumes from last successfully anchored | Persistent dedupe ledger; registry idempotency means safe re-runs |
-| Performance | CU benchmarks single + 50-CID batch | `BENCHMARKS.md` — localnet captured (~120ms total zkVM executor for 50-CID batch, ~2.5ms/CID amortized); **devnet TBD** (RPC URL gated behind Discord-issued basic-auth credentials — see `BUGS_FILED.md` #7) |
-| Supportability | Deployed on LEZ devnet/testnet | **TBD — awaiting devnet RPC URL from Logos team**; `DEPLOYMENT.md` has commands ready |
-| Supportability | E2E integration tests in CI with `RISC0_DEV_MODE=0` | `.github/workflows/ci.yml` — workspace tests + ignored live-LEZ tests |
+| Performance | CU benchmarks single + 50-CID batch | `BENCHMARKS.md` — per-tx CU is not exposed by the testnet RPC (no receipt method; filed upstream, [`BUGS_FILED.md`](BUGS_FILED.md) #7), so CU = executor cycles of the **deployed ELF** (`54c7f793…`), which the deterministic zkVM makes exactly equal to on-chain CU. Testnet latency + payload/proof size captured live. ⚠️ executor figures pending re-measure against the rc3 ELF (M4 Pro) — current numbers are the rc1 guest |
+| Supportability | Deployed on LEZ testnet | **complete** — public testnet `testnet.lez.logos.co` (2026-06-03), program `54c7f793…aa91`, deploy + anchor lifecycle confirmed on chain; see [`TESTNET_PROOF.md`](TESTNET_PROOF.md), re-verify via `bash scripts/verify-testnet.sh` |
+| Supportability | E2E integration tests in CI with `RISC0_DEV_MODE=0` | `.github/workflows/ci.yml` `verify-testnet` job runs on **every push** — re-queries the deployed program's transactions from the public sequencer (read-only, no secrets) and fails if any are missing. Replaces the old `workflow_dispatch`+`exit 1` stub that never ran. |
 
 ## License
 

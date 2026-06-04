@@ -7,6 +7,8 @@
 /queue.db
 # lgs scaffold runtime state (sequencer wallets, sequencer cache)
 .scaffold/
+# local testnet run artifacts (curated evidence lives in TESTNET_PROOF.md)
+.testnet-build/
 Cargo.lock.bak
 /artifacts/
 ui/Cargo.lock

@@ -1,0 +1,13 @@
+# LP-0017 demo input — newline-delimited MetadataEnvelopeV1 records.
+#
+# These are the EXACT records the Logos Delivery topic carries (what the
+# Basecamp UI plugin broadcasts after an upload). The permissionless batch tool
+# replays them through its real dedupe + batch + on-chain anchor pipeline:
+#   whistleblower-batch --envelopes-from demo/sample-envelopes.jsonl \
+#       --program-bin target/riscv32im-risc0-zkvm-elf/docker/whistleblower_registry.bin
+# No mock delivery client is involved — only the on-chain registry is exercised
+# (against the deployed public-testnet program). Lines starting with '#' and
+# blank lines are ignored.
+{"version":1,"cid":"bafy-lp0017-demo-doc-charter","title":"Redacted procurement charter","description":"Leaked internal procurement charter, pages 1-12","content_type":"application/pdf","size_bytes":284913,"timestamp":1780531200000,"tags":["procurement","leak","demo"]}
+{"version":1,"cid":"bafy-lp0017-demo-doc-ledger","title":"Off-book ledger extract","description":"Spreadsheet extract, Q3 off-book entries","content_type":"text/csv","size_bytes":10422,"timestamp":1780531260000,"tags":["finance","leak","demo"]}
+{"version":1,"cid":"bafy-lp0017-demo-doc-memo","title":"Internal compliance memo","description":"Memo instructing deletion of audit records","content_type":"text/markdown","size_bytes":4096,"timestamp":1780531320000,"tags":["compliance","leak","demo"]}

@@ -39,48 +39,50 @@ Wallet state: `.scaffold/wallet/`. Pre-seeded accounts:
 
 The local sequencer runs `RISC0_DEV_MODE=true` by default — proofs are stubbed. The submission video MUST switch to `RISC0_DEV_MODE=0` for real proof generation; see `DEMO.md`.
 
-## LEZ devnet / testnet
+## Public LEZ testnet (primary deployment)
 
-**Status:** Awaiting the devnet RPC URL from the Logos team (#builder-hub).
-The deployment commands are identical to localnet — only the
-`NSSA_SEQUENCER_URL` env var needs to point at the devnet endpoint.
+**Status: DEPLOYED.** The registry is live on the public LEZ testnet — full hashes, `chain-info` verdicts, and PDA decodes are in [`TESTNET_PROOF.md`](TESTNET_PROOF.md); re-verify any time with `bash scripts/verify-testnet.sh` (read-only).
 
-Once the URL is available, deploy with:
+```
+sequencer RPC:  https://testnet.lez.logos.co/   (public, no-auth, JSON-RPC over HTTPS POST)
+explorer:       https://explorer.testnet.lez.logos.co/
+program id:     54c7f793caa540408ce2ca4c22051d78c466cd5ed8db607feedd19dcb749aa91   (= ImageID)
+deploy tx:      05781c3c5fa65d72d1ee9ee8f0964144f9a5688ef8ad14f445581e308026608f   (Some(ProgramDeployment))
+anchor_one:     9f6aee9cc97a62300780f0e576e76c61c4e1fb32bef5067d574a798a1a0de227   (Some(Public))
+anchor_one dup: 8f2fe8f103a9c6a7a65547e9244db9ef4a1d3ef42caf8067288316f2d920dfbc   (idempotent no-op)
+anchor_batch:   f5fedf2910dad89c91a62ec257f7a722c638c07203fac914a9766cdfe148e22f   (Some(Public))
+```
+
+### Version-pin landmine (must match for the binary to execute)
+
+The testnet runs LEZ **`v0.1.2` ≡ `v0.2.0-rc3`** (commit `cf3639d8`). The guest, adapter, and driver are pinned to rc3 (`nssa`/`nssa_core`/`common`/`wallet`/`sequencer_service_rpc` → `tag = v0.2.0-rc3`; `spel` → branch `chore/bump-lez-to-v0.2.0-rc3` = `31e52c52`, because spel's own `v0.2.0-rc.3` tag pins `nssa_core` back to rc1). `ruint` is pinned to `1.17.0` (the rc3 graph otherwise pulls `1.18.0`, which needs rustc 1.90 > the risc0 guest-builder's 1.88). Verify: `Cargo.lock` resolves `nssa_core` to `cf3639d8`, zero `35d8df0d`.
+
+### Reproduce the deploy + lifecycle (fresh)
+
+`wallet deploy-program` is fire-and-forget (it discards the tx hash). The driver `anchor_spike/src/bin/testnet_lifecycle.rs` instead builds a typed `ProgramDeploymentTransaction`, submits it, captures the hash, and polls — then runs the anchor/dup/batch lifecycle, capturing every hash.
 
 ```bash
-# Set the devnet endpoint (URL TBD — substitute the real one).
-export NSSA_SEQUENCER_URL="https://devnet-sequencer.logos.example"
+# 1. Build the rc3 guest (heavy risc0 build — route to a build host):
+cargo risczero build --manifest-path methods/guest/Cargo.toml
+#    -> target/riscv32im-risc0-zkvm-elf/docker/whistleblower_registry.bin (ImageID 54c7f793…)
 
-# Same deploy command as localnet (program_id is image-hash determined,
-# so it'll be the same byte-for-byte as the localnet program_id).
-lgs deploy --program-path \
-  target/riscv-guest/whistleblower-methods/whistleblower-programs/riscv32im-risc0-zkvm-elf/release/whistleblower_registry.bin
+# 2. Fund an initialised testnet account (one-time):
+wallet config set sequencer_addr https://testnet.lez.logos.co/
+wallet check-health                         # expect ✅
+wallet account new public                   # note Public/<id>
+wallet pinata claim --to Public/<id>
+
+# 3. Deploy + run the lifecycle, capturing hashes:
+export NSSA_WALLET_HOME_DIR=<funded testnet wallet home>
+export LP0017_PROGRAM_BIN=$PWD/target/riscv32im-risc0-zkvm-elf/docker/whistleblower_registry.bin
+export PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1
+cargo run --release -p anchor-spike --bin testnet_lifecycle
+#    or: bash scripts/demo.sh --full
 ```
 
-Then capture the deployment metadata here:
+Public-tx execution is **sequencer-proved** (no host-side proving in the anchor path) and charges no gas to a fee payer — see `BENCHMARKS.md`. CU is the deterministic executor-cycle cost of the deployed ELF (the testnet does not persist per-tx CU — filed upstream, `BUGS_FILED.md` #7).
 
-```
-devnet program_id:    <copy from `lgs deploy` output>
-devnet deploy block:  <from sequencer; query via `wallet chain-info`>
-devnet deploy tx hash: <from `lgs deploy` JSON output with --json>
-```
-
-And rerun the live integration suite + `anchor_spike` against devnet
-to capture the production benchmark numbers (they'll differ from
-localnet because `RISC0_DEV_MODE=0` runs real proving):
-
-```bash
-NSSA_WALLET_HOME_DIR=$PWD/.scaffold/wallet \
-  RISC0_DEV_MODE=0 \
-  cargo test -p whistleblower-lez-adapter --release -- --ignored --nocapture
-```
-
-Then update `BENCHMARKS.md` with the resulting wall-clock + CU numbers.
-
-If the devnet program ID matches the localnet build (which it should
-since program_id is the SHA of the guest binary), the existing
-`whistleblower-registry.idl.json` is reusable as-is. If they differ
-for any reason, regenerate the IDL or re-publish.
+The IDL (`whistleblower-registry.idl.json`) is generated from the same program shape via `bash scripts/regen-idl.sh` and decodes on-chain entries with `spel inspect`.
 
 ## Verification
 
