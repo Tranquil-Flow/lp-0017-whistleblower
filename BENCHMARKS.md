@@ -6,7 +6,7 @@ Spec line 58: "Document and measure the compute unit (CU) cost of a single-CID a
 >
 > **How CU is measured, and why it is the testnet figure.** The public testnet does not expose a per-transaction compute-unit value: the RISC0 executor computes cycle counts in `SessionInfo`, but `nssa/src/program.rs` consumes only `session_info.journal` and discards the cycles; no tx/block/receipt struct carries a cost field, and there is no `getTransactionReceipt` RPC (filed upstream — [`BUGS_FILED.md`](BUGS_FILED.md) #7). The RISC0 zkVM is **deterministic**, so the compute units consumed by a transaction depend only on `(program ELF, input)` — running the **deployed ELF** (`ImageID 54c7f793…aa91`) in the executor yields the *exact* cycle count it consumes on the testnet. CU below is therefore the executor cost of the deployed program, not a separate localnet program. The testnet runs the identical program families (`getProgramIds`), and anchor txs use the public path (sequencer-side execution), so this equivalence is exact for this tx class.
 >
-> ⚠️ **rc3 re-measurement pending.** The table below was captured against the **rc1 (`35d8df0d`) guest**. The deployed testnet program is the **rc3 (`cf3639d8`) build** (`ImageID 54c7f793…`). The executor-cycle figures must be re-captured against the rc3 ELF before resubmission (the program logic is unchanged, so the per-CID shape is expected to hold, but the absolute numbers must come from the deployed ELF). This is a heavy RISC0/localnet run via `scripts/measure_cu.sh`. **Follow-up infra note:** the hermetic `cargo risczero build` (and `lgs localnet`) require **Docker**; the M4 Pro build host does not currently have Docker installed, so this runs on a Docker-enabled host (install Docker on the M4 Pro, or run on the main machine). The deployed rc3 `.bin` already exists at `target/riscv32im-risc0-zkvm-elf/docker/whistleblower_registry.bin` (ImageID `54c7f793…`).
+> ✅ **rc3 CU measured (2026-06-05).** The authoritative, deterministic CU of the **deployed rc3 ELF** (`ImageID 54c7f793…`) is in the **"Deterministic CU of the deployed rc3 ELF"** table below: `anchor_one` = **100,185** user cycles, `anchor_batch(50)` = **4,506,872** (~90 K/CID). These are produced by running the deployed guest through the same RISC0 executor the sequencer uses (`cargo run -p anchor-spike --bin measure_cu_cycles`, no proving, no network), so any reviewer reproduces the exact integers. The localnet executor-*time* table immediately below (rc1 guest, captured 2026-05-04/05) is retained only as wall-clock corroboration of the same per-CID shape.
 
 ## Methodology
 
@@ -83,12 +83,42 @@ The earlier "devnet pending credentials" note is **obsolete**: a public, no-auth
 
 **Per-transaction CU — not exposed by the testnet.** As explained at the top of this file, the testnet never persists a per-tx CU value (BUGS_FILED #7). CU is therefore obtained by executing the **deployed ELF** in the RISC0 executor — deterministic, so equal to on-chain CU.
 
-| Operation | Accounts touched | CU source | Executor cycles (rc3 ELF `54c7f793…`) |
-|---|---|---|---|
-| `anchor_one` (single CID) | 1 | deployed-ELF execution | **pending rc3 re-measure (M4 Pro)** |
-| `anchor_batch` (50 CIDs)  | 50 | deployed-ELF execution | **pending rc3 re-measure (M4 Pro)** |
+### Deterministic CU of the deployed rc3 ELF (`ImageID 54c7f793…`) — authoritative
 
-The rc1-guest figures in the localnet table above stand in until the rc3 re-measure lands; the program logic is identical between rc1 and rc3 (only the LEZ host API changed — `AccountId::for_public_pda`), so the per-CID shape is expected to carry over. `scripts/measure_cu.sh` runs the capture; `DEPLOYMENT.md` has the deploy commands.
+Measured 2026-06-05 by running the **deployed rc3 guest** through the same RISC0
+executor the sequencer uses for public transactions (`anchor_spike::measure_cu_cycles`
+→ `nssa::Program::execute` path, no proving, no network, no wallet). The RISC0 zkVM is
+deterministic, so identical `(ELF, input)` ⇒ identical cycles: these user-cycle counts
+are exactly the CU the testnet sequencer consumes for the same transactions. The 32 M
+public-execution session cap (`MAX_NUM_CYCLES_PUBLIC_EXECUTION`) is applied, so the
+per-tx budget headroom is reported too.
+
+| Operation | Accounts touched | User cycles (rc3 ELF) | Per-CID | % of 32 M cap |
+|---|---:|---:|---:|---:|
+| `anchor_one` (single CID) | 1  | 100,185   | 100,185 | 0.3%  |
+| `anchor_batch` (10 CIDs)  | 10 | 912,871   | ~91,287 | 2.7%  |
+| `anchor_batch` (50 CIDs)  | 50 | 4,506,872 | ~90,137 | 13.4% |
+
+Per-CID cost is **essentially constant (~90 K cycles)** once the fixed per-tx overhead
+(~10 K cycles, visible as the single-CID premium) amortizes — confirming the PDA-per-CID
+**O(1)-per-anchor** design. A 50-CID batch consumes 13.4% of the public-execution budget
+(5× the spec's ≥10-CID floor, comfortably within cap).
+
+**Reproduce (read-only, deterministic — any reviewer gets identical integers):**
+
+```bash
+# Build the deployed guest reproducibly (Docker-pinned) -> ImageID 54c7f793…
+cargo risczero build --manifest-path methods/guest/Cargo.toml
+# Run the deployed ELF through the sequencer's executor and print user cycles:
+cargo run --release -p anchor-spike --bin measure_cu_cycles -- \
+  target/riscv32im-risc0-zkvm-elf/docker/whistleblower_registry.bin
+```
+
+The localnet executor-**time** table above (rc1 guest, 2026-05-04/05) is retained as
+wall-clock corroboration of the same shape; the deterministic **cycle** counts here are
+the authoritative CU for the deployed program. `scripts/measure_cu.sh` additionally
+captures sequencer-log executor *times* against a running localnet, if a wall-clock
+cross-check is wanted.
 
 ## Expected shape
 

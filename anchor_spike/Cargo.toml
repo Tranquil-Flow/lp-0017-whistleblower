@@ -16,6 +16,16 @@ path = "src/main.rs"
 name = "testnet_lifecycle"
 path = "src/bin/testnet_lifecycle.rs"
 
+# Deterministic CU measurement. Runs the *deployed* rc3 guest ELF through the
+# same RISC0 executor the sequencer uses (nssa::Program::execute path), with no
+# proving, and reports the user-cycle count for anchor_one / anchor_batch. The
+# RISC0 executor is deterministic, so these cycle counts equal the on-chain CU
+# the testnet sequencer charges for the identical (ELF, input). Read-only, no
+# network/wallet — any reviewer can reproduce the exact numbers.
+[[bin]]
+name = "measure_cu_cycles"
+path = "src/bin/measure_cu_cycles.rs"
+
 [dependencies]
 nssa_core = { workspace = true, features = ["host"] }
 nssa.workspace = true
@@ -27,5 +37,6 @@ whistleblower-core = { path = "../core" }
 whistleblower-lez-adapter = { path = "../adapters/lez" }
 anyhow = "1"
 borsh.workspace = true
+risc0-zkvm.workspace = true
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 hex.workspace = true

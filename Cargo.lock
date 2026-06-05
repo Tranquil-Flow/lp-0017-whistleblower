@@ -86,6 +86,7 @@ dependencies = [
  "hex",
  "nssa",
  "nssa_core",
+ "risc0-zkvm",
  "sequencer_service_rpc",
  "tokio",
  "wallet",
