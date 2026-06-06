@@ -146,7 +146,15 @@ Flags accept env vars too: `WL_TOPIC`, `WL_BATCH_SIZE`, `WL_BATCH_INTERVAL_SECS`
 Each anchored CID lives in its own PDA derived from `(program_id, sha256("lp0017:cid:v1\0" || cid))`. Read it with `spel inspect`:
 
 ```bash
-# Compute the PDA for a known CID first (script helper TBD; for now use anchor_spike's printout).
+# Derive the PDA from a CID, then inspect it with the SPEL-generated IDL.
+python3 - <<'PY'
+import base58, hashlib, sys
+from hashlib import sha256
+program_id = bytes.fromhex("54c7f793caa540408ce2ca4c22051d78c466cd5ed8db607feedd19dcb749aa91")
+cid = (sys.argv[1] if len(sys.argv) > 1 else "bafybeigdyrzt3qgq2gqexamplelp0017cid00000000000000000000000000").encode()
+seed = sha256(b"lp0017:cid:v1\0" + cid).digest()
+print(base58.b58encode(hashlib.sha256(program_id + seed).digest()).decode())
+PY
 spel inspect <pda-base58> --idl whistleblower-registry.idl.json --type AnchorEntry
 ```
 
@@ -178,7 +186,7 @@ The locked design decisions (`REGISTRY_SPIKE.md` has the on-chain spike detail):
 | Reliability | Upload retries with backoff | `Publisher` wraps every adapter call in `with_retry` (5 retries, exponential) |
 | Reliability | Delivery dedup | `DurableDedupeStore` in `batch::run_batch_loop` (sled-backed) |
 | Reliability | Batch tool resumes from last successfully anchored | Persistent dedupe ledger; registry idempotency means safe re-runs |
-| Performance | CU benchmarks single + 50-CID batch | `BENCHMARKS.md` — per-tx CU is not exposed by the testnet RPC (no receipt method; filed upstream, [`BUGS_FILED.md`](BUGS_FILED.md) #7), so CU = executor cycles of the **deployed ELF** (`54c7f793…`), which the deterministic zkVM makes exactly equal to on-chain CU. Testnet latency + payload/proof size captured live. ⚠️ executor figures pending re-measure against the rc3 ELF (M4 Pro) — current numbers are the rc1 guest |
+| Performance | CU benchmarks single + 50-CID batch | `BENCHMARKS.md` — per-tx CU is not exposed by the testnet RPC (no receipt method; filed upstream, [`BUGS_FILED.md`](BUGS_FILED.md) #7), so CU = executor cycles of the **deployed rc3 ELF** (`54c7f793…`), which the deterministic zkVM makes exactly equal to on-chain CU. Authoritative measured values: `anchor_one` = 100,185 user cycles; `anchor_batch(50)` = 4,506,872 user cycles (~90 K/CID). Testnet latency + payload/proof size captured live. |
 | Supportability | Deployed on LEZ testnet | **complete** — public testnet `testnet.lez.logos.co` (2026-06-03), program `54c7f793…aa91`, deploy + anchor lifecycle confirmed on chain; see [`TESTNET_PROOF.md`](TESTNET_PROOF.md), re-verify via `bash scripts/verify-testnet.sh` |
 | Supportability | E2E integration tests in CI with `RISC0_DEV_MODE=0` | `.github/workflows/ci.yml` `verify-testnet` job runs on **every push** — re-queries the deployed program's transactions from the public sequencer (read-only, no secrets) and fails if any are missing. Replaces the old `workflow_dispatch`+`exit 1` stub that never ran. |
 
