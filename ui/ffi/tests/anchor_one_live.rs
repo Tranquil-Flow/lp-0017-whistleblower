@@ -13,7 +13,9 @@
 //!
 //! Run with:
 //!
-//!     NSSA_WALLET_HOME_DIR=$PWD/.scaffold/wallet \
+//!     NSSA_WALLET_HOME_DIR=$PWD/../../.nssa-testnet-wallet \
+//!     NSSA_SEQUENCER_URL=https://testnet.lez.logos.co \
+//!     WHISTLEBLOWER_PROGRAM_BIN=$PWD/target/riscv32im-risc0-zkvm-elf/docker/whistleblower_registry.bin \
 //!       cargo test -p whistleblower_ffi --release \
 //!         --test anchor_one_live -- --ignored --nocapture
 

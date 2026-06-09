@@ -32,6 +32,12 @@ else()
         set(WHISTLEBLOWER_FFI_LIB_DIR "${CMAKE_CURRENT_SOURCE_DIR}/ffi/target/release")
     endif()
 
+    if(DEFINED ENV{WHISTLEBLOWER_PROGRAM_BIN})
+        set(WHISTLEBLOWER_PROGRAM_BIN "$ENV{WHISTLEBLOWER_PROGRAM_BIN}")
+    elseif(NOT DEFINED WHISTLEBLOWER_PROGRAM_BIN)
+        set(WHISTLEBLOWER_PROGRAM_BIN "${CMAKE_CURRENT_SOURCE_DIR}/artifacts/whistleblower_registry.bin")
+    endif()
+
     set(PLUGIN_TARGET whistleblower_plugin)
 
     qt_add_plugin(${PLUGIN_TARGET} CLASS_NAME WhistleblowerPlugin)
@@ -121,6 +127,12 @@ else()
     install(FILES "${WHISTLEBLOWER_FFI_LIB_DIR}/libwhistleblower_ffi.${WHISTLEBLOWER_FFI_SUFFIX}"
         DESTINATION lib
     )
+    if(EXISTS "${WHISTLEBLOWER_PROGRAM_BIN}")
+        install(FILES "${WHISTLEBLOWER_PROGRAM_BIN}"
+            DESTINATION lib
+            RENAME whistleblower_registry.bin
+        )
+    endif()
 
     # ── Standalone preview app ────────────────────────────────────────────────
     set(APP_TARGET whistleblower_app)

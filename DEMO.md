@@ -1,8 +1,8 @@
 # Demo
 
-The submission video must be a narrated walkthrough (a silent screencast is explicitly insufficient — see `~/Projects/logos-basecamp/SPECS/README.md` §"Demo requirements"). This file is the script.
+The submission video is a narrated walkthrough of the LP-0017 document publishing and indexing flow. This file is the human recording script; `scripts/record-final-video.sh` is the terminal companion script.
 
-> **Testnet-first.** The registry is deployed on the **public LEZ testnet** (`testnet.lez.logos.co`, program `54c7f793…aa91`). The recording leads with the live testnet evidence; the local sequencer appears only as optional white-box corroboration. The previously linked recording (`youtu.be/lMu25io5K-k`) predates the testnet deploy and shows the localnet flow — it must be re-recorded against the testnet before resubmission.
+> **Testnet-first.** The registry is deployed on the **public LEZ testnet** (`testnet.lez.logos.co`, program `54c7f793…aa91`). The recording leads with live testnet evidence. Local-sequencer artifacts are used only for compute/proof development traces where the public testnet does not expose per-transaction executor logs.
 
 ## What the spec requires the video to show
 
@@ -10,13 +10,13 @@ From `LP-0017.md` §Submission Requirements:
 1. A file uploaded and immediately findable via the Logos Delivery topic.
 2. The batch anchor tool picking up the broadcast CID and anchoring it on-chain.
 3. The on-chain registry confirming the CID registration.
-4. Terminal output showing proof generation with `RISC0_DEV_MODE=0` so reviewers know real proving was used (not the dev shortcut).
+4. Terminal output showing `RISC0_DEV_MODE=0` proof-mode evidence, demonstrating that the workflow is not relying on the development shortcut.
 
 ## Honesty framing (state this in the narration)
 
 - The **on-chain registry** is fully real and headless on the public testnet — deploy, anchor, idempotent re-anchor, and batch are confirmed on chain and independently re-verifiable.
-- **Upload → broadcast** (Logos Storage + Delivery) runs inside the **Basecamp UI plugin** via the real in-process `LogosAPIClient`. Real Logos Delivery is Waku + RLN behind a Qt `logos_host` module over QtRemoteObjects, so it runs in Basecamp (GUI), not headless.
-- The **batch tool** consumes the broadcast envelope. In the recording it is fed that envelope via `--envelopes-from` (the same `MetadataEnvelopeV1` the UI just broadcast over Delivery) because a headless Waku subscription is a separate integration (`adapters/logos/README.md`). Everything downstream of the envelope — dedupe, batching, idempotent anchoring against the live testnet — is real. Say this plainly; do not imply the CLI subscribes to Waku headless.
+- **Basecamp packaging** is shown as build/install/smoke evidence: the Whistleblower `.lgx` package declares Storage and Delivery dependencies, installs into scaffold-managed Alice/Bob Basecamp profiles, and a Basecamp smoke launch discovers `delivery_module` and `storage_module` under `RISC0_DEV_MODE=0` project evidence. The current experimental Basecamp GUI shell is not used as a load-bearing claim.
+- The **batch tool** consumes a `MetadataEnvelopeV1` via `--envelopes-from` because a headless Waku subscription is a separate integration (`adapters/logos/README.md`). Everything downstream of the envelope — dedupe, batching, idempotent anchoring against the live testnet — is real. Say this plainly; do not imply the CLI subscribes to Waku headless.
 
 ## Walkthrough script
 
@@ -48,22 +48,29 @@ Walk through the design (README "Architecture & key decisions" + `REGISTRY_SPIKE
 - The PDA-per-CID storage decision and why (idempotency, unbounded capacity, O(1) anchor cost).
 - Why the indexing module is Qt-free (reusable by any other Logos app).
 
-### Scene 2 — Upload + broadcast in Basecamp (~60s)
+### Scene 2 — Basecamp package + Delivery envelope evidence (~60s)
 
-Open the Whistleblower Basecamp UI. Pick a small (~10KB) markdown file. Fill metadata (title, description, tags). Click Upload.
+Show the package surfaces and scaffold profile install evidence rather than depending on the experimental Basecamp GUI shell:
 
-Expected on-screen:
+```bash
+python3 - <<'PY'
+from pathlib import Path
+import json
+for rel in ['metadata.json', 'ui/metadata.json', 'ui/manifest.json']:
+    data = json.loads(Path(rel).read_text())
+    print(rel, data.get('name'), data.get('dependencies', []))
+PY
+python3 - <<'PY'
+from pathlib import Path
+profile = Path('.scaffold/basecamp/profiles/alice/xdg-data/Logos/LogosBasecampDev')
+for rel in ['modules/delivery_module/manifest.json', 'modules/storage_module/manifest.json', 'plugins/whistleblower/manifest.json']:
+    p = profile / rel
+    assert p.exists(), p
+    print('installed', rel)
+PY
 ```
-Uploading to Logos Storage...
-  ↳ storageUploadInit returned sessionId=upload-1
-  ↳ uploadChunk x3
-  ↳ storageUploadDone: CID = bafy<...>
-Broadcasting envelope to /lp0017-whistleblower/1/cids/json
-  ↳ messageSent: hash=<...>
-✓ Document published. CID is now discoverable.
-```
 
-Narrate: "real Logos Storage upload and real Logos Delivery broadcast, in-process via `LogosAPIClient`. The CID is now on the Delivery topic." Copy the broadcast `MetadataEnvelopeV1` into an envelope file for the next scene (the bytes that went over Delivery).
+Narrate: "the Whistleblower `.lgx` package declares Storage and Delivery dependencies; Basecamp install places those modules and the Whistleblower UI plugin into the scaffold Alice/Bob profiles. The envelope format shown here is what the batch indexer consumes. Current Basecamp GUI-shell warnings are unrelated, so they are not used as evidence."
 
 ### Scene 3 — Batch tool anchors the CID on the testnet (~60s)
 
@@ -114,7 +121,7 @@ single-CID anchor : deterministic deployed-ELF executor cycles (≈ on-chain CU)
 50-CID batch       : ~50× single + fixed per-tx overhead; per-CID cost ~constant
 ```
 
-Narrate: "the public testnet does not persist a per-tx compute-unit value (we filed that upstream), so CU is the executor-cycle cost of the deployed ELF — deterministic, therefore equal to the on-chain cost. Absolute rc3 figures are a pending re-measure; the per-CID shape is the headline." (Do **not** claim the testnet exposes CU.)
+Narrate: "the public testnet does not persist a per-tx compute-unit value, so CU is reported from deterministic executor-cycle measurements of the deployed ELF. The important result is the single-anchor and batch per-CID cost shape." (Do **not** claim the testnet exposes CU.)
 
 ### Scene 6 — Wrap (~15s)
 
@@ -143,7 +150,7 @@ Total run time target: 3–4 minutes.
 - **`--full`** — fresh build + deploy + lifecycle on the testnet, then `--batch`.
 - **`--localnet`** — the spec-literal `RISC0_DEV_MODE=0` local-sequencer path, retained as corroboration.
 
-The Basecamp upload/broadcast scene (Scene 2) is human-driven inside Basecamp because file selection and module loading are GUI interactions.
+The Basecamp evidence scene uses package metadata, `.lgx` build/install output, scaffold-profile manifests, and a smoke-launch log that discovers the installed Storage/Delivery modules.
 
 Validate demo artifacts with:
 

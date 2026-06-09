@@ -2,8 +2,7 @@
   "author": "LP-0017 Whistleblower submission",
   "category": "tools",
   "dependencies": [
-    "storage_module",
-    "delivery_module"
+    "storage_module"
   ],
   "description": "Censorship-resistant document upload + on-chain anchoring (LP-0017)",
   "icon": "",

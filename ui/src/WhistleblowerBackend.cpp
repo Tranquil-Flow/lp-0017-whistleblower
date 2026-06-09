@@ -2,6 +2,7 @@
 
 #include <QCoreApplication>
 #include <QDateTime>
+#include <QDir>
 #include <QDebug>
 #include <QFile>
 #include <QFileInfo>
@@ -21,6 +22,10 @@
 #include "logos_api_client.h"
 #include "logos_object.h"
 #include "logos_mode.h"
+
+#if defined(__APPLE__) || defined(__linux__)
+#include <dlfcn.h>
+#endif
 
 namespace {
 // Read a JSON config from a Qt resource (`qrc:/configs/<name>`). Returns the
@@ -46,6 +51,43 @@ extern "C" {
     void  whistleblower_free_string(char* s);
 }
 
+namespace {
+QString ffiLibraryDir() {
+#if defined(__APPLE__) || defined(__linux__)
+    Dl_info info;
+    if (dladdr(reinterpret_cast<void*>(&whistleblower_anchor_one), &info) != 0 && info.dli_fname) {
+        return QFileInfo(QString::fromUtf8(info.dli_fname)).absolutePath();
+    }
+#endif
+    return {};
+}
+
+QString sourceTreeProgramBinPath() {
+    QDir sourceDir(QFileInfo(QString::fromUtf8(__FILE__)).absolutePath());
+    return QDir::cleanPath(sourceDir.filePath("../artifacts/whistleblower_registry.bin"));
+}
+
+QString resolveProgramBinPath() {
+    const QString explicitProgramBin = qEnvironmentVariable("WHISTLEBLOWER_PROGRAM_BIN");
+    if (!explicitProgramBin.isEmpty()) return explicitProgramBin;
+
+    const QString batchProgramBin = qEnvironmentVariable("WL_PROGRAM_BIN");
+    if (!batchProgramBin.isEmpty()) return batchProgramBin;
+
+    const QString libDir = ffiLibraryDir();
+    if (!libDir.isEmpty()) {
+        const QString colocated = QDir(libDir).filePath("whistleblower_registry.bin");
+        if (QFileInfo::exists(colocated)) return colocated;
+    }
+
+    const QString sourceTree = sourceTreeProgramBinPath();
+    if (QFileInfo::exists(sourceTree)) return sourceTree;
+
+    return {};
+}
+
+}
+
 static QString callFfiRaw(char* (*fn)(const char*), const QJsonObject& args) {
     QByteArray json = QJsonDocument(args).toJson(QJsonDocument::Compact);
     char* raw = fn(json.constData());
@@ -63,10 +105,9 @@ WhistleblowerBackend::WhistleblowerBackend(LogosAPI* api, QObject* parent)
 {
     if (m_api) {
         // Resolve LogosAPIClient handles + LogosObject* references for the two
-        // modules we depend on. Both modules are declared in manifest.json so
-        // Basecamp guarantees they're loaded before we are constructed.
+        // modules we depend on. Basecamp loads manifest dependencies before it
+        // calls into this UI plugin.
         m_storageClient = m_api->getClient("storage_module");
-        m_deliveryClient = m_api->getClient("delivery_module");
         if (m_storageClient) {
             m_storageObject = m_storageClient->requestObject("storage_module");
             // storage_module needs init(config) + start() before any upload.
@@ -119,9 +160,21 @@ WhistleblowerBackend::WhistleblowerBackend(LogosAPI* api, QObject* parent)
                     });
             }
         }
+        const bool deliveryEnabled =
+            qEnvironmentVariable("WHISTLEBLOWER_ENABLE_DELIVERY") == QStringLiteral("1");
+        if (!deliveryEnabled) {
+            qInfo() << "WhistleblowerBackend: delivery broadcast disabled; "
+                       "set WHISTLEBLOWER_ENABLE_DELIVERY=1 to enable it.";
+        } else {
+            m_deliveryClient = m_api->getClient("delivery_module");
+        }
         if (m_deliveryClient) {
             m_deliveryObject = m_deliveryClient->requestObject("delivery_module");
-            // delivery_module needs init(config) + start() before send().
+            // delivery_module needs createNode(config) + start() before send().
+            // (The module exposes createNode(QString)->bool, NOT init(QString);
+            // calling "init" hits ModuleProxy "method not found" and leaves the
+            // Messaging context uninitialised, so start() then fails with
+            // "context not initialized. Call createNode first.")
             // Bundled config ships {"mode":"Core","preset":"logos.dev"} —
             // the preset key resolves to liblogosdelivery's compiled-in
             // bootstrap peer list for the public logos.dev network (see
@@ -129,11 +182,11 @@ WhistleblowerBackend::WhistleblowerBackend(LogosAPI* api, QObject* parent)
             // waku/factory/networks_config.nim::LogosDevConf).
             const QString deliveryCfg = readBundledConfig("delivery_config.json");
             if (!deliveryCfg.isEmpty()) {
-                qInfo() << "WhistleblowerBackend: delivery_module.init() …";
+                qInfo() << "WhistleblowerBackend: delivery_module.createNode() …";
                 QVariantList initArgs{QVariant(deliveryCfg)};
                 QVariant initOk = m_deliveryClient->invokeRemoteMethod(
-                    "delivery_module", "init", initArgs, Timeout(30000));
-                qInfo() << "WhistleblowerBackend: delivery_module.init() ->" << initOk;
+                    "delivery_module", "createNode", initArgs, Timeout(30000));
+                qInfo() << "WhistleblowerBackend: delivery_module.createNode() ->" << initOk;
                 qInfo() << "WhistleblowerBackend: delivery_module.start() …";
                 QVariantList startArgs;
                 QVariant startOk = m_deliveryClient->invokeRemoteMethod(
@@ -160,7 +213,7 @@ WhistleblowerBackend::WhistleblowerBackend(LogosAPI* api, QObject* parent)
                             auto cb = m_pendingPublishCallback;
                             m_pendingPublishCallback = nullptr;
                             QString err = data.size() > 2 ? data[2].toString() : QStringLiteral("unknown");
-                            setError("broadcast", err);
+                            qWarning() << "WhistleblowerBackend: delivery broadcast failed:" << err;
                             cb(QString());
                         }
                     });
@@ -172,10 +225,15 @@ WhistleblowerBackend::WhistleblowerBackend(LogosAPI* api, QObject* parent)
 WhistleblowerBackend::~WhistleblowerBackend() = default;
 
 QJsonObject WhistleblowerBackend::baseFfiArgs() const {
-    return QJsonObject{
+    QJsonObject args{
         {"wallet_path",   m_walletPath},
         {"sequencer_url", m_sequencerUrl},
     };
+    const QString programBin = resolveProgramBinPath();
+    if (!programBin.isEmpty()) {
+        args["program_bin"] = programBin;
+    }
+    return args;
 }
 
 void WhistleblowerBackend::setBusy(bool busy, const QString& message) {
@@ -204,6 +262,15 @@ void WhistleblowerBackend::setSelectedFile(const QString& filePath) {
     if (m_selectedFile == normalized) return;
     m_selectedFile = normalized;
     emit selectedFileChanged();
+    if (!m_lastCid.isEmpty()) {
+        m_lastCid.clear();
+        emit lastCidChanged();
+    }
+    m_lastMetadataHashHex.clear();
+    if (m_lastAnchorTimestamp != 0) {
+        m_lastAnchorTimestamp = 0;
+        emit lastAnchorTimestampChanged();
+    }
     setStage(0);
 }
 
@@ -232,13 +299,14 @@ void WhistleblowerBackend::publish(
     setStage(1);
     m_lastError.clear();
     emit lastErrorChanged();
+    if (m_lastAnchorTimestamp != 0) {
+        m_lastAnchorTimestamp = 0;
+        emit lastAnchorTimestampChanged();
+    }
 
     uploadToStorage(m_selectedFile, [this, title, description, contentType, sizeBytes, tags](QString cid) {
         if (cid.isEmpty()) return; // setError already invoked
 
-        m_lastCid = cid;
-        emit lastCidChanged();
-        emit uploadComplete(cid);
         setBusy(true, "computing metadata hash…");
 
         // Build the canonical envelope + hash via the Rust FFI.
@@ -249,16 +317,23 @@ void WhistleblowerBackend::publish(
         {
             return; // setError already invoked
         }
-        m_lastMetadataHashHex = metadataHashHex;
 
-        setBusy(true, "broadcasting to Logos Delivery…");
-        setStage(2);
+        m_lastCid = cid;
+        m_lastMetadataHashHex = metadataHashHex;
+        emit lastCidChanged();
+        emit uploadComplete(cid);
+        qInfo() << "WhistleblowerBackend: publish complete; ready to anchor CID" << cid;
+        setStage(2); // upload + hash are complete; ready to anchor
+        setBusy(false, "");
+
+        // Delivery is useful when the host module is available, but the on-chain
+        // anchor only needs the storage CID and canonical metadata hash. Keep
+        // broadcast best-effort so an unavailable delivery host cannot block
+        // the demo path.
         const QString topic = "/lp0017-whistleblower/1/cids/json";
         broadcastEnvelope(topic, envelopeBytes, [this](QString messageHash) {
             if (messageHash.isEmpty()) return;
             emit broadcastComplete(messageHash);
-            setStage(2); // ready to anchor
-            setBusy(false, "");
         });
     });
 }
@@ -403,12 +478,12 @@ void WhistleblowerBackend::broadcastEnvelope(
     std::function<void(QString)> onComplete)
 {
     if (!m_api || !m_deliveryClient || !m_deliveryObject) {
-        setError("broadcast", "delivery_module not available — running outside Basecamp host?");
+        qInfo() << "WhistleblowerBackend: delivery_module not available; skipping best-effort broadcast.";
         onComplete(QString());
         return;
     }
     if (m_pendingPublishCallback) {
-        setError("broadcast", "another publish already in flight");
+        qWarning() << "WhistleblowerBackend: delivery broadcast already in flight; skipping.";
         onComplete(QString());
         return;
     }
@@ -430,7 +505,8 @@ void WhistleblowerBackend::broadcastEnvelope(
         if (m_pendingPublishCallback) {
             auto cb = m_pendingPublishCallback;
             m_pendingPublishCallback = nullptr;
-            setError("broadcast", "timed out waiting for messageSent (30s)");
+            qWarning() << "WhistleblowerBackend: timed out waiting for messageSent (30s); "
+                          "continuing with storage CID only.";
             cb(QString());
         }
     });

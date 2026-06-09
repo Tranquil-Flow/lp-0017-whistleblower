@@ -96,10 +96,10 @@
             # transitive deps. Will need updating on first nix build (nix
             # will print the correct hash for any mismatched entries).
             outputHashes = {
-              "amm_core-0.1.0"                          = "sha256-j0DzDvH88IUIReYi6N4FD6+mTIJOklQjaa9qjw4yHEg=";
+              "amm_core-0.1.0"                          = "sha256-tbVljiQ5Xgm5LBea6bIEDFp/pextnYtooNk+IWx/3XE=";
               "jf-crhf-0.1.1"                           = "sha256-TUm91XROmUfqwFqkDmQEKyT9cOo1ZgAbuTDyEfe6ltg=";
               "jf-poseidon2-0.1.0"                      = "sha256-QeCjgZXO7lFzF2Gzm2f8XI08djm5jyKI6D8U0jNTPB8=";
-              "logos-blockchain-blend-crypto-0.1.2"     = "sha256-8u4P4yDkxrHzQKZLtxl+orQjJCP55CCIxQZ1V2Lbruc=";
+              "logos-blockchain-blend-crypto-0.2.1"     = "sha256-gHOMTMe3Mu9a5HM+eZnSGncxt4sYNtAHbJK7gRCIUEo=";
               "overwatch-0.1.0"                         = "sha256-L7R1GdhRNNsymYe3RVyYLAmd6x1YY08TBJp4hG4/YwE=";
             };
           };
@@ -173,6 +173,7 @@
           installPhase = ''
             runHook preInstall
             cmake --install .
+            cp ${./ui/artifacts/whistleblower_registry.bin} $out/lib/whistleblower_registry.bin
             cp ${./ui/manifest.json} $out/manifest.json
             cp ${./ui/metadata.json} $out/metadata.json
             cp -r ${./ui/qml} $out/qml
@@ -214,8 +215,10 @@
           esac
           PLUGIN_DIR="$PLUGIN_BASE/whistleblower"
           mkdir -p "$PLUGIN_DIR"
+          cp -f ${plugin}/lib/whistleblower.*           "$PLUGIN_DIR/" 2>/dev/null || true
           cp -f ${plugin}/lib/libwhistleblower_plugin.* "$PLUGIN_DIR/" 2>/dev/null || true
           cp -f ${plugin}/lib/libwhistleblower_ffi.*    "$PLUGIN_DIR/" 2>/dev/null || true
+          cp -f ${plugin}/lib/whistleblower_registry.bin "$PLUGIN_DIR/"
           cp -f ${plugin}/manifest.json                  "$PLUGIN_DIR/"
           cp -f ${plugin}/metadata.json                  "$PLUGIN_DIR/"
           echo "Installed to $PLUGIN_DIR"

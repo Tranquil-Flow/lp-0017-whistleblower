@@ -38,7 +38,7 @@ use whistleblower_core::{
     cid_hash as compute_cid_hash, AnchorEntry, CanonicalCid, CidHash, MetadataHash,
     RegistryInstruction,
 };
-use whistleblower_methods::WHISTLEBLOWER_REGISTRY_ELF;
+use whistleblower_methods::{WHISTLEBLOWER_REGISTRY_ELF, WHISTLEBLOWER_REGISTRY_PATH};
 
 pub struct LezRegistryClient {
     wallet_core: Arc<WalletCore>,
@@ -62,7 +62,17 @@ impl LezRegistryClient {
     /// Create a client using the embedded `WHISTLEBLOWER_REGISTRY_ELF`.
     /// Uses system unix-ms for `anchor_timestamp`.
     pub fn new(wallet_core: Arc<WalletCore>) -> Result<Self, AdapterError> {
-        Self::with_program_bytes(wallet_core, WHISTLEBLOWER_REGISTRY_ELF.to_vec())
+        let elf = if WHISTLEBLOWER_REGISTRY_ELF.is_empty() {
+            std::fs::read(WHISTLEBLOWER_REGISTRY_PATH).map_err(|e| {
+                AdapterError::non_retryable(format!(
+                    "embedded registry ELF is empty and fallback path {} could not be read: {e}",
+                    WHISTLEBLOWER_REGISTRY_PATH
+                ))
+            })?
+        } else {
+            WHISTLEBLOWER_REGISTRY_ELF.to_vec()
+        };
+        Self::with_program_bytes(wallet_core, elf)
     }
 
     pub fn with_program_bytes(
@@ -71,10 +81,20 @@ impl LezRegistryClient {
     ) -> Result<Self, AdapterError> {
         let program = Program::new(elf)
             .map_err(|e| AdapterError::non_retryable(format!("parse program ELF: {e:?}")))?;
+        // Localnet confirms in ~15s (one block); the public LEZ testnet is
+        // slower and a submitted tx can take several blocks to surface via
+        // get_transaction. 30s (~2 blocks) was too tight there — the tx lands
+        // but the poll gives up first. Default to 180s and allow an override
+        // via WHISTLEBLOWER_ANCHOR_CONFIRM_SECS for slower/faster environments.
+        let confirm_secs = std::env::var("WHISTLEBLOWER_ANCHOR_CONFIRM_SECS")
+            .ok()
+            .and_then(|s| s.parse::<u64>().ok())
+            .filter(|s| *s > 0)
+            .unwrap_or(180);
         Ok(Self {
             wallet_core,
             program,
-            confirmation_timeout: Duration::from_secs(30),
+            confirmation_timeout: Duration::from_secs(confirm_secs),
             timestamp_source: TimestampSource::SystemTimeMs,
         })
     }
@@ -132,23 +152,50 @@ impl LezRegistryClient {
             .await
             .map_err(|e| AdapterError::retryable(format!("submit {label}: {e:?}")))?;
 
-        // Poll get_transaction(hash) until it lands or we exhaust the timeout.
+        // NOTE: we deliberately do NOT gate success on a get_transaction(hash)
+        // poll. On the public LEZ testnet a submitted public tx frequently never
+        // surfaces via get_transaction even after it has landed and mutated
+        // state (verified: tx hashes return None indefinitely while the entry
+        // PDA fills correctly). The authoritative success signal is the
+        // populated entry PDA, which the caller polls via `read_entry_until`.
+        // We still do a brief best-effort confirmation poll so localnet keeps
+        // its fast path and the hash is observed when the sequencer does expose
+        // it, but a miss here is not an error.
         let poll_interval = Duration::from_millis(750);
-        let max_attempts =
-            (self.confirmation_timeout.as_millis() / poll_interval.as_millis()) as usize;
-        for _ in 0..max_attempts {
-            tokio::time::sleep(poll_interval).await;
+        let best_effort_attempts = 8; // ~6s
+        for _ in 0..best_effort_attempts {
             if let Ok(Some(_)) = self
                 .wallet_core
                 .sequencer_client
                 .get_transaction(hash)
                 .await
             {
-                return Ok(());
+                break;
             }
+            tokio::time::sleep(poll_interval).await;
+        }
+        Ok(())
+    }
+
+    /// Poll an entry PDA until it decodes to an `AnchorEntry` or the
+    /// confirmation timeout elapses. This is the authoritative confirmation
+    /// for an anchor on the public testnet (see `submit_and_wait`).
+    async fn read_entry_until(
+        &self,
+        pda: AccountId,
+        label: &str,
+    ) -> Result<AnchorEntry, AdapterError> {
+        let poll_interval = Duration::from_millis(750);
+        let max_attempts =
+            (self.confirmation_timeout.as_millis() / poll_interval.as_millis()).max(1) as usize;
+        for _ in 0..max_attempts {
+            if let Some(entry) = self.read_entry(pda).await? {
+                return Ok(entry);
+            }
+            tokio::time::sleep(poll_interval).await;
         }
         Err(AdapterError::retryable(format!(
-            "{label}: tx {hash:?} did not confirm within {:?}",
+            "{label}: entry-PDA still empty after {:?} (tx submitted but not yet reflected on-chain)",
             self.confirmation_timeout
         )))
     }
@@ -190,9 +237,7 @@ impl RegistryClient for LezRegistryClient {
             "anchor_one",
         )
         .await?;
-        self.read_entry(pda).await?.ok_or_else(|| {
-            AdapterError::retryable("anchor_one: entry-PDA still empty after tx confirmation")
-        })
+        self.read_entry_until(pda, "anchor_one").await
     }
 
     async fn anchor_batch(
@@ -215,10 +260,7 @@ impl RegistryClient for LezRegistryClient {
         .await?;
         let mut out = Vec::with_capacity(pdas.len());
         for pda in pdas {
-            let entry = self.read_entry(pda).await?.ok_or_else(|| {
-                AdapterError::retryable("anchor_batch: entry-PDA still empty after tx confirmation")
-            })?;
-            out.push(entry);
+            out.push(self.read_entry_until(pda, "anchor_batch").await?);
         }
         Ok(out)
     }

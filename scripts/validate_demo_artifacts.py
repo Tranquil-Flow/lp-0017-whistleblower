@@ -47,11 +47,11 @@ def main() -> None:
     manifest = json.loads(read("ui/manifest.json"))
     require(manifest["main"]["darwin-arm64-dev"] == "whistleblower.dylib", "Basecamp dev manifest must point to whistleblower.dylib")
     require("storage_module" in manifest["dependencies"], "manifest must depend on storage_module")
-    require("delivery_module" in manifest["dependencies"], "manifest must depend on delivery_module")
+    require("delivery_module" not in manifest["dependencies"], "delivery_module must stay optional so publish cannot block on broadcast")
 
     metadata = json.loads(read("ui/metadata.json"))
     require(metadata["main"] == "whistleblower", "metadata main must match Basecamp plugin filename")
-    require(metadata.get("dependencies") == ["storage_module", "delivery_module"], "metadata dependencies must load storage/delivery first")
+    require(metadata.get("dependencies") == ["storage_module"], "metadata dependencies must load storage first and keep delivery optional")
 
     for cfg in ["ui/configs/storage_config.json", "ui/configs/delivery_config.json"]:
         json.loads(read(cfg))

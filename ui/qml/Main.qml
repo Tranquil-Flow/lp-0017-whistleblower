@@ -178,7 +178,7 @@ Rectangle {
                 spacing: 12
 
                 WbButton {
-                    text: "Publish (upload + broadcast)"
+                    text: "Publish (upload)"
                     accent: true
                     enabled: !backend.busy && backend.selectedFile !== "" && titleField.text !== ""
                     onClicked: backend.publish(titleField.text.trim(), descriptionField.text.trim(), tagsField.text.trim())

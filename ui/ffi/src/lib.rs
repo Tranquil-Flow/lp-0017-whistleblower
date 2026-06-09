@@ -23,8 +23,8 @@
 //!   Every fn takes a JSON args string, returns a JSON result string.
 //!   Args at minimum include:
 //!     { "wallet_path": "...", "sequencer_url": "..." }
-//!   The Whistleblower program ID is derived from the embedded
-//!   `WHISTLEBLOWER_REGISTRY_ELF`, so callers don't supply it.
+//!   Callers may also pass `program_bin`; the Basecamp plugin passes the
+//!   bundled deployed registry `.bin` so PDA derivation matches testnet.
 //!
 //! Caller MUST free returned strings via `whistleblower_free_string`.
 
@@ -33,6 +33,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::ffi::{CStr, CString};
 use std::os::raw::c_char;
+use std::path::PathBuf;
 use std::sync::Arc;
 use wallet::WalletCore;
 use whistleblower_core::{cid_hash as compute_cid_hash, CanonicalCid, CidHash, MetadataHash};
@@ -86,6 +87,34 @@ fn init_wallet(v: &Value) -> Result<Arc<WalletCore>, String> {
     WalletCore::from_env()
         .map(Arc::new)
         .map_err(|e| format!("wallet init: {}", e))
+}
+
+fn registry_client(v: &Value, wallet: Arc<WalletCore>) -> Result<LezRegistryClient, String> {
+    let program_bin = v["program_bin"]
+        .as_str()
+        .map(str::to_owned)
+        .or_else(|| std::env::var("WHISTLEBLOWER_PROGRAM_BIN").ok())
+        .or_else(|| std::env::var("WL_PROGRAM_BIN").ok());
+
+    match program_bin {
+        Some(path) if !path.trim().is_empty() => {
+            let path = PathBuf::from(path);
+            let elf = std::fs::read(&path)
+                .map_err(|e| format!("read program_bin {}: {}", path.display(), e))?;
+            if elf.is_empty() {
+                return Err(format!("program_bin {} is empty", path.display()));
+            }
+            LezRegistryClient::with_program_bytes(wallet, elf).map_err(|e| {
+                format!(
+                    "LezRegistryClient::with_program_bytes({}): {}",
+                    path.display(),
+                    e.message
+                )
+            })
+        }
+        _ => LezRegistryClient::new(wallet)
+            .map_err(|e| format!("LezRegistryClient::new: {}", e.message)),
+    }
 }
 
 fn parse_metadata_hash(s: &str) -> Result<MetadataHash, String> {
@@ -150,8 +179,7 @@ fn anchor_one_impl(args: &str) -> Result<String, String> {
             .ok_or("missing metadata_hash_hex")?,
     )?;
 
-    let client = LezRegistryClient::new(wallet)
-        .map_err(|e| format!("LezRegistryClient::new: {}", e.message))?;
+    let client = registry_client(&v, wallet)?;
 
     let rt = tokio::runtime::Runtime::new().map_err(|e| format!("tokio: {}", e))?;
     let entry = rt
@@ -182,8 +210,7 @@ fn query_by_cid_impl(args: &str) -> Result<String, String> {
         .map_err(|e| format!("invalid cid: {}", e))?;
     let cid_hash = compute_cid_hash(&cid);
 
-    let client = LezRegistryClient::new(wallet)
-        .map_err(|e| format!("LezRegistryClient::new: {}", e.message))?;
+    let client = registry_client(&v, wallet)?;
     let rt = tokio::runtime::Runtime::new().map_err(|e| format!("tokio: {}", e))?;
     let result = rt
         .block_on(client.query_by_cid_hash(cid_hash))
@@ -216,8 +243,7 @@ fn query_by_cid_hash_impl(args: &str) -> Result<String, String> {
     let wallet = init_wallet(&v)?;
     let cid_hash = parse_cid_hash(v["cid_hash_hex"].as_str().ok_or("missing cid_hash_hex")?)?;
 
-    let client = LezRegistryClient::new(wallet)
-        .map_err(|e| format!("LezRegistryClient::new: {}", e.message))?;
+    let client = registry_client(&v, wallet)?;
     let rt = tokio::runtime::Runtime::new().map_err(|e| format!("tokio: {}", e))?;
     let result = rt
         .block_on(client.query_by_cid_hash(cid_hash))

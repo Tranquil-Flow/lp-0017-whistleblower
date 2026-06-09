@@ -36,7 +36,7 @@ class WhistleblowerBackend : public QObject {
     Q_PROPERTY(QString busyMessage READ busyMessage NOTIFY busyChanged)
     Q_PROPERTY(bool busy READ busy NOTIFY busyChanged)
     /// Stage indicator for the QML progress bar:
-    /// 0 = nothing; 1 = uploading; 2 = broadcasting; 3 = anchored.
+    /// 0 = nothing; 1 = uploading; 2 = ready to anchor; 3 = anchored.
     Q_PROPERTY(int stage READ stage NOTIFY stageChanged)
 
 public:
@@ -56,9 +56,9 @@ public slots:
     /// QML calls this when the user picks a file.
     void setSelectedFile(const QString& filePath);
     /// QML calls this when the user clicks "Publish".
-    /// Drives the upload (storage_module) -> broadcast (delivery_module)
-    /// pipeline; on success, lastCid is set and the user can then click
-    /// "Anchor on chain" to trigger the on-chain step.
+    /// Drives the upload (storage_module) -> metadata hash pipeline; on
+    /// success, lastCid is set and the user can then click "Anchor on chain".
+    /// Delivery broadcast is best-effort and opt-in for demo stability.
     void publish(const QString& title, const QString& description, const QString& tagsCsv);
     /// QML calls this when the user clicks "Anchor on chain". Calls the
     /// Rust FFI's whistleblower_anchor_one with the stored lastCid +

@@ -1,5 +1,5 @@
 [scaffold]
-version = "0.1.1"
+version = "0.2.0"
 # cache_root: directory for scaffold's build/repo caches.
 # Resolution order when resolving at runtime:
 #   1. LOGOS_SCAFFOLD_CACHE_ROOT env var
@@ -24,6 +24,12 @@ url = "https://github.com/logos-co/spel.git"
 source = "https://github.com/logos-co/spel.git"
 pin = "ed3bbedb4b684645da05455d30a4a0be7cc4dfe0"
 
+[repos.basecamp]
+source = "https://github.com/logos-co/logos-basecamp"
+pin = "a746cdbc521f72ee22c5a4856fd17a9802bb9d69"
+build = "nix-flake"
+attr = "app"
+
 [wallet]
 home_dir = ".scaffold/wallet"
 
@@ -40,20 +46,17 @@ port = 3040
 risc0_dev_mode = false
 
 [basecamp]
-pin = "a746cdbc521f72ee22c5a4856fd17a9802bb9d69"
-source = "https://github.com/logos-co/logos-basecamp"
-lgpm_flake = ""
 port_base = 60000
 port_stride = 10
 
-[basecamp.modules.delivery_module]
+[modules.delivery_module]
 flake = "github:logos-co/logos-delivery-module/1fde1566291fe062b98255003b9166b0261c6081#lgx"
 role = "dependency"
 
-[basecamp.modules.storage_module]
+[modules.storage_module]
 flake = "github:logos-co/logos-storage-module/b1d82a32c1ba27e20d07b7ed8555fd45b02adb4e#lgx"
 role = "dependency"
 
-[basecamp.modules.whistleblower]
+[modules.whistleblower]
 flake = "path:.#lgx"
 role = "project"
