@@ -24,4 +24,4 @@ The repository also documents the Basecamp, storage, and delivery framing for th
 
 ## Closing
 
-LP-0017 is ready for resubmission once this fresh video URL is inserted into the solution file. The key point is that the public-testnet anchor transactions are live and independently re-verifiable.
+LP-0017 is ready for resubmission with fresh video URL: https://youtu.be/L_pEo_YpiqA. The key point is that the public-testnet anchor transactions are live and independently re-verifiable.

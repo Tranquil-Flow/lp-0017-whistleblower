@@ -50,12 +50,18 @@ def main() -> None:
         require("scripts/demo.sh" in row_18, "Task 1.8 row must cite scripts/demo.sh")
 
         row_111 = table_row(tasks, "1.11 — Narrated video demo")
-        require("⚪ Not started" in row_111, "Narrated video should remain not started until an actual recording exists")
+        require("✅ Done" in row_111 or "⚪ Not started" in row_111, "Narrated video status must reflect whether a fresh recording exists")
 
     require("scripts/demo.sh" in demo, "DEMO.md must point reviewers to scripts/demo.sh")
     require("python3 scripts/validate_demo_artifacts.py" in demo, "DEMO.md must include demo artifact validation command")
+    solution = read(ROOT / "solutions" / "LP-0017.md")
+    video_url = "https://youtu.be/L_pEo_YpiqA"
+    require(video_url in solution, "LP-0017 solution must include the final narrated demo video URL")
+    require("Narrated demo video:** *re-record" not in solution, "LP-0017 solution must not leave narrated demo video pending")
+    require("Re-record pending" not in solution, "LP-0017 solution must not leave stale re-record text")
     if pr:
         require("lgs basecamp install" in pr, "PR draft pre-submit gates must include the lgs Basecamp install path")
+        require(video_url in pr, "PR draft must include the final narrated demo video URL")
     require("lgs basecamp install" in readme or "nix run  .#install" in readme, "README must document plugin install path")
     require("lez_adapter_anchor_50_cids_in_one_tx" in measure_cu, "scripts/measure_cu.sh must capture the 50-CID live benchmark path")
     require("TBD (needs anchor_spike --batch=50 flag" not in measure_cu, "scripts/measure_cu.sh must not leave the 50-CID benchmark as a stale TBD")

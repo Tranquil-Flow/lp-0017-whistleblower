@@ -12,7 +12,7 @@ envelope over Logos Delivery, and anchor the CID on the LEZ registry.
 | `qml/Main.qml` | ✅ File picker + metadata form + 4-stage progress bar + Publish/Anchor buttons |
 | `ffi/` (Rust C ABI) | ✅ 4 unit tests pass. Three exported FFI calls: `whistleblower_anchor_one`, `whistleblower_query_by_cid`, `whistleblower_compute_metadata_hash`. Builds via `cargo build --release -p whistleblower_ffi` AND via `nix build .#ffi` (workspace-root flake). |
 | `src/WhistleblowerPlugin.{h,cpp}` | ✅ Standard Qt plugin entry |
-| `src/WhistleblowerBackend.{h,cpp}` | ✅ **Real LogosAPI integration** — uses `m_api->getClient()` → `requestObject()` → `onEvent()` for storage/delivery modules. Calls `invokeRemoteMethodAsync` for `uploadUrl` / `send`. Single-flight callbacks with safety timeouts. |
+| `src/WhistleblowerBackend.{h,cpp}` | ✅ **Real LogosAPI integration** — uses `m_api->getClient()` → `requestObject()` → `onEvent()` for storage/delivery modules. Calls `invokeRemoteMethodAsync` for `uploadUrl` / `send`. Single-flight callbacks with safety timeouts. Anchor calls pass the bundled deployed `whistleblower_registry.bin` to the Rust FFI so normal Basecamp launches do not rely on shell env vars. |
 | `src/main.cpp` | ✅ Standalone preview app for manual UI iteration without Basecamp |
 | `CMakeLists.txt` (workspace root: `../`) | ✅ Builds Qt plugin + preview app, links Rust FFI cdylib + liblogos_sdk.a, finds Qt6 RemoteObjects |
 | `../flake.nix` | ✅ **Workspace-root flake builds the full chain.** `.#ffi`, `.#plugin`, `.#lgx`, `.#install` all work. Built `dist/whistleblower-plugin.lgx` (2.4MB) end-to-end on m4pro. |
@@ -84,8 +84,8 @@ envelope over Logos Delivery, and anchor the CID on the LEZ registry.
    reported as deterministic deployed-ELF cycles (testnet hides per-tx CU);
    rc3 absolute re-measure pending. See `DEPLOYMENT.md`.
 
-7. **Record the narrated video demo** against the public testnet. Script in
-   `DEMO.md`. The earlier localnet recording must be replaced.
+7. ✅ **Narrated video demo recorded** against the public testnet: <https://youtu.be/L_pEo_YpiqA>.
+   Script remains in `DEMO.md`; the earlier localnet recording is superseded.
 
 ## Build (development, local)
 
