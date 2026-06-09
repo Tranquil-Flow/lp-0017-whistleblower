@@ -18,7 +18,7 @@ If you are currently recording `bash scripts/verify-testnet.sh`, use `AUDIO_SCRI
 
 ## Scene 3 — Storage, Delivery, and indexing surfaces
 
-"Here I am showing the app-facing integration surfaces. The Basecamp manifest declares its module dependencies. The sample envelope includes CID, title, description, content type, byte size, timestamp, and tags. The indexing API is separate from the app UI so other Logos modules can reuse it."
+"Here I am showing the app-facing integration surfaces. The Basecamp manifest requires Storage and keeps Delivery optional for demo stability. The sample envelope includes CID, title, description, content type, byte size, timestamp, and tags. The indexing API is separate from the app UI so other Logos modules can reuse it."
 
 ## Scene 4 — Demo script modes
 
@@ -34,11 +34,11 @@ If you are currently recording `bash scripts/verify-testnet.sh`, use `AUDIO_SCRI
 
 ## Scene 7 — Basecamp package evidence
 
-"This section verifies the Basecamp package artifacts. It shows metadata and manifests for the Whistleblower plugin, plus Storage and Delivery dependencies. It also checks installed Basecamp profile artifacts."
+"This section verifies the Basecamp package artifacts. It shows metadata and manifests for the Whistleblower plugin, the required Storage dependency, and optional Delivery availability. It also checks installed Basecamp profile artifacts."
 
 ### Optional local window switch prompt
 
-"I am switching to the local Logos Basecamp window now. What I am showing here is the locally installed Basecamp app/profile after running the package install script on this M4 laptop. If visible, you should see the Whistleblower plugin and the Storage and Delivery modules available to Basecamp. This is package and runtime-availability evidence; the terminal verification remains the authoritative proof for Delivery envelopes and public-testnet anchoring."
+"I am switching to the local Logos Basecamp window now. What I am showing here is the locally installed Basecamp app/profile after running the package install script on this M4 laptop. If visible, you should see the Whistleblower plugin, required Storage module, and optional Delivery module availability. This is package and runtime-availability evidence; the terminal verification remains the authoritative proof for envelope handling and public-testnet anchoring."
 
 Switch back to terminal after showing Basecamp for 5–15 seconds.
 

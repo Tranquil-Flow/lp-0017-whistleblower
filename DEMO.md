@@ -15,7 +15,7 @@ From `LP-0017.md` §Submission Requirements:
 ## Honesty framing (state this in the narration)
 
 - The **on-chain registry** is fully real and headless on the public testnet — deploy, anchor, idempotent re-anchor, and batch are confirmed on chain and independently re-verifiable.
-- **Basecamp packaging** is shown as build/install/smoke evidence: the Whistleblower `.lgx` package declares Storage and Delivery dependencies, installs into scaffold-managed Alice/Bob Basecamp profiles, and a Basecamp smoke launch discovers `delivery_module` and `storage_module` under `RISC0_DEV_MODE=0` project evidence. The current experimental Basecamp GUI shell is not used as a load-bearing claim.
+- **Basecamp packaging** is shown as build/install/smoke evidence: the Whistleblower `.lgx` package declares `storage_module` as the required dependency, keeps `delivery_module` optional/best-effort, installs into scaffold-managed Alice/Bob Basecamp profiles, and a Basecamp smoke launch discovers the installed runtime modules under `RISC0_DEV_MODE=0` project evidence. The current experimental Basecamp GUI shell is not used as a load-bearing claim.
 - The **batch tool** consumes a `MetadataEnvelopeV1` via `--envelopes-from` because a headless Waku subscription is a separate integration (`adapters/logos/README.md`). Everything downstream of the envelope — dedupe, batching, idempotent anchoring against the live testnet — is real. Say this plainly; do not imply the CLI subscribes to Waku headless.
 
 ## Walkthrough script
@@ -63,14 +63,16 @@ PY
 python3 - <<'PY'
 from pathlib import Path
 profile = Path('.scaffold/basecamp/profiles/alice/xdg-data/Logos/LogosBasecampDev')
-for rel in ['modules/delivery_module/manifest.json', 'modules/storage_module/manifest.json', 'plugins/whistleblower/manifest.json']:
+for rel in ['modules/storage_module/manifest.json', 'plugins/whistleblower/manifest.json']:
     p = profile / rel
     assert p.exists(), p
     print('installed', rel)
+optional = profile / 'modules/delivery_module/manifest.json'
+print('optional delivery installed:', optional.exists())
 PY
 ```
 
-Narrate: "the Whistleblower `.lgx` package declares Storage and Delivery dependencies; Basecamp install places those modules and the Whistleblower UI plugin into the scaffold Alice/Bob profiles. The envelope format shown here is what the batch indexer consumes. Current Basecamp GUI-shell warnings are unrelated, so they are not used as evidence."
+Narrate: "the Whistleblower `.lgx` package requires Storage and keeps Delivery best-effort so upload and anchoring cannot be blocked by Delivery startup. The envelope format shown here is what the batch indexer consumes. Current Basecamp GUI-shell warnings are unrelated, so they are not used as evidence."
 
 ### Scene 3 — Batch tool anchors the CID on the testnet (~60s)
 
@@ -150,7 +152,7 @@ Total run time target: 3–4 minutes.
 - **`--full`** — fresh build + deploy + lifecycle on the testnet, then `--batch`.
 - **`--localnet`** — the spec-literal `RISC0_DEV_MODE=0` local-sequencer path, retained as corroboration.
 
-The Basecamp evidence scene uses package metadata, `.lgx` build/install output, scaffold-profile manifests, and a smoke-launch log that discovers the installed Storage/Delivery modules.
+The Basecamp evidence scene uses package metadata, `.lgx` build/install output, scaffold-profile manifests, and a smoke-launch log that discovers the installed required Storage module plus optional Delivery availability.
 
 Validate demo artifacts with:
 

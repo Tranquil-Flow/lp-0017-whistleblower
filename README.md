@@ -106,15 +106,15 @@ Expected: 18 fast tests pass (5 adapter contract + 3 batch loop + 2 publisher e2
 
 ## Build the Basecamp UI plugin
 
-The plugin is a Qt6/QML widget that loads inside Basecamp, exposes the file picker + metadata form + 4-stage publish progress UI, and bridges to Logos Storage / Delivery via `LogosAPIClient` and to the on-chain registry via the Rust FFI cdylib. Build via the workspace-root nix flake on a machine with the Logos toolchain installed:
+The plugin is a Qt6/QML widget that loads inside Basecamp, exposes the file picker + metadata form + 4-stage publish progress UI, bridges to required Logos Storage via `LogosAPIClient`, can best-effort broadcast through Logos Delivery when `WHISTLEBLOWER_ENABLE_DELIVERY=1`, and anchors through the Rust FFI cdylib. Build via the workspace-root nix flake on a machine with the Logos toolchain installed:
 
 ```bash
 nix build .#ffi      # Rust cdylib (~3-4 min)
 nix build .#plugin   # Qt6 plugin + standalone preview app
 nix build .#lgx      # portable .lgx package — the spec deliverable
 nix run  .#install   # copies plugin into Basecamp dev plugin dir
-lgs basecamp install # evaluator path: installs storage_module + delivery_module + whistleblower
-scripts/fix_delivery_rln.sh # workaround for upstream delivery_module librln install-name bug
+lgs basecamp install # evaluator path: installs storage_module + whistleblower; delivery_module may also be present as an optional module
+scripts/fix_delivery_rln.sh # optional workaround when enabling delivery_module on affected macOS installs
 ```
 
 The `.lgx` file is the spec deliverable. Verified end-to-end on m4pro (aarch64-darwin) on 2026-05-04: `dist/whistleblower-plugin.lgx` (2.4MB). See [`ui/README.md`](ui/README.md) for the manual `cmake -B build` development workflow.
@@ -124,7 +124,7 @@ The `.lgx` file is the spec deliverable. Verified end-to-end on m4pro (aarch64-d
 The CLI is the spec's "permissionless batch anchor tool" (line 33). It owns the on-chain side end-to-end: dedupe ledger, batching window, retry, idempotent anchor against the deployed program. The CID source is the `DeliveryClient` trait, so the same binary works against several transports:
 
 - **`--envelopes-from <file>` (real, headless).** Replays the exact `MetadataEnvelopeV1` records the Delivery topic carries (newline-delimited JSON) through the real dedupe + batch + on-chain anchor pipeline — no mock, no Qt/Waku dependency. This is what the reproducible demo and CI use, and a legitimate operating mode for anyone who already holds a list of broadcast envelopes. Point `--program-bin` at the **deployed** program `.bin` so PDAs match the on-chain program id (a docker `cargo risczero build` and the in-process `embed_methods` build can produce different ImageIDs).
-- **Live Logos Delivery (Waku) subscription** — the production transport. Real Delivery is Waku + RLN behind the Logos Core `delivery_module`, reachable as a Qt `logos_host` process over QtRemoteObjects, so it runs inside the Basecamp UI plugin (`ui/`, in-process `LogosAPIClient`). A headless Rust equivalent (QtRemoteObjects client, or RLN-membership management against Waku directly) is a separate integration — options + tradeoffs in [`adapters/logos/README.md`](adapters/logos/README.md).
+- **Live Logos Delivery (Waku) subscription** — the production transport. Real Delivery is Waku + RLN behind the Logos Core `delivery_module`, reachable as a Qt `logos_host` process over QtRemoteObjects. The Basecamp plugin keeps this path opt-in (`WHISTLEBLOWER_ENABLE_DELIVERY=1`) so upload and on-chain anchoring remain stable even if Delivery startup is unavailable. A headless Rust equivalent (QtRemoteObjects client, or RLN-membership management against Waku directly) is a separate integration — options + tradeoffs in [`adapters/logos/README.md`](adapters/logos/README.md).
 - **`--mock-delivery`** — in-memory dev client only.
 
 ```bash
@@ -166,8 +166,8 @@ The locked design decisions (`REGISTRY_SPIKE.md` has the on-chain spike detail):
 
 - **PDA-per-CID** registry storage (not single-root-PDA) — O(1) anchor cost, unbounded capacity, idempotency-by-default-state-check.
 - **Raw `nssa_core` guest** (not SPEL macros) — the deployed guest ELF (`54c7f793…aa91`) is hand-rolled `nssa_core` for a lean cross-compile. The IDL is still **machine-generated via `spel generate-idl`** from a parse-only `#[lez_program]` mirror at `idl/whistleblower_registry.rs` that is never compiled (regen: `bash scripts/regen-idl.sh`). `spel generate-idl` only AST-parses its input, so this pulls nothing into the guest build — the earlier "spel-framework forces bonsai-sdk into the riscv32im build" claim was wrong (it's a `k256` host feature, off by default, with no bonsai dep anywhere in LEZ). One documented gap: SPEL's seed model (`const|account|arg`) can't express our `sha256(domain‖cid)` PDA seed — filed upstream (see [`BUGS_FILED.md`](BUGS_FILED.md)).
-- **Adapter-based reusable indexing module** — Qt-free Rust core, `Arc<dyn StorageClient + DeliveryClient + RegistryClient>` boundary. Real LEZ registry adapter + a real headless file-replay `DeliveryClient` (`--envelopes-from`) in tree; the UI plugin supplies real Storage + Delivery via in-process `LogosAPIClient`. A headless live Waku Delivery client (Waku + RLN over QtRemoteObjects) is a documented separate integration — see [`adapters/logos/README.md`](adapters/logos/README.md).
-- **Wallet-free upload + broadcast** — only on-chain anchoring needs a wallet, satisfying spec line 17 ("without identifying the uploader").
+- **Adapter-based reusable indexing module** — Qt-free Rust core, `Arc<dyn StorageClient + DeliveryClient + RegistryClient>` boundary. Real LEZ registry adapter + a real headless file-replay `DeliveryClient` (`--envelopes-from`) in tree; the UI plugin supplies real Storage and an opt-in Delivery send path via in-process `LogosAPIClient`. A headless live Waku Delivery client (Waku + RLN over QtRemoteObjects) is a documented separate integration — see [`adapters/logos/README.md`](adapters/logos/README.md).
+- **Wallet-free upload + envelope creation** — only on-chain anchoring needs a wallet, satisfying spec line 17 ("without identifying the uploader"). Delivery broadcast is available as an opt-in best-effort step when the host Delivery module is enabled.
 - **Topic** = `/lp0017-whistleblower/1/cids/json` (LIP-23 shape). Constant in `whistleblower-core`.
 
 ## Spec compliance map
@@ -175,7 +175,7 @@ The locked design decisions (`REGISTRY_SPIKE.md` has the on-chain spike detail):
 | Spec § | Requirement | Where |
 |---|---|---|
 | Functionality 1 | Upload to Logos Storage | `ui/src/WhistleblowerBackend.cpp::uploadToStorage` via `LogosAPIClient::invokeRemoteMethodAsync("storage_module", "uploadUrl", ...)` |
-| Functionality 2 | Broadcast envelope to Logos Delivery topic | `ui/src/WhistleblowerBackend.cpp::broadcastEnvelope` via `LogosAPIClient::invokeRemoteMethodAsync("delivery_module", "send", ...)`; topic = `core::DEFAULT_CONTENT_TOPIC` |
+| Functionality 2 | Broadcast envelope to Logos Delivery topic | `ui/src/WhistleblowerBackend.cpp::broadcastEnvelope` via `LogosAPIClient::invokeRemoteMethodAsync("delivery_module", "send", ...)` when `WHISTLEBLOWER_ENABLE_DELIVERY=1`; topic = `core::DEFAULT_CONTENT_TOPIC`. Publish/anchor remains usable when Delivery is unavailable. |
 | Functionality 3 | Optional anchor on-chain | `Publisher::anchor_published` (Rust) + `whistleblower_anchor_one` FFI exposed to QML |
 | Functionality 4 | Batch anchor CLI tool | `whistleblower-batch` binary (`batch/`) — subscribes to topic, batches, anchors |
 | Functionality 4 idempotency | Re-submitting registered CID succeeds no-op | Built into `process_entry` in the guest; `LezRegistryClient` exercises it |

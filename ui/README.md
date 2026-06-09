@@ -1,18 +1,19 @@
 # Whistleblower Basecamp UI plugin (LP-0017)
 
 Qt6 + QML + Rust FFI plugin for the Logos Basecamp app. Lets a user pick a
-document, upload it to Logos Storage, broadcast the `(CID, metadata)`
-envelope over Logos Delivery, and anchor the CID on the LEZ registry.
+document, upload it to Logos Storage, create the `(CID, metadata)` envelope,
+optionally best-effort broadcast it over Logos Delivery, and anchor the CID on
+the LEZ registry.
 
 ## Status — built end-to-end
 
 | Component | State |
 |---|---|
-| `manifest.json` + `metadata.json` | ✅ Configured for `whistleblower` plugin name + `storage_module`/`delivery_module` deps |
+| `manifest.json` + `metadata.json` | ✅ Configured for `whistleblower` plugin name + required `storage_module`; Delivery send is opt-in/best-effort |
 | `qml/Main.qml` | ✅ File picker + metadata form + 4-stage progress bar + Publish/Anchor buttons |
 | `ffi/` (Rust C ABI) | ✅ 4 unit tests pass. Three exported FFI calls: `whistleblower_anchor_one`, `whistleblower_query_by_cid`, `whistleblower_compute_metadata_hash`. Builds via `cargo build --release -p whistleblower_ffi` AND via `nix build .#ffi` (workspace-root flake). |
 | `src/WhistleblowerPlugin.{h,cpp}` | ✅ Standard Qt plugin entry |
-| `src/WhistleblowerBackend.{h,cpp}` | ✅ **Real LogosAPI integration** — uses `m_api->getClient()` → `requestObject()` → `onEvent()` for storage/delivery modules. Calls `invokeRemoteMethodAsync` for `uploadUrl` / `send`. Single-flight callbacks with safety timeouts. Anchor calls pass the bundled deployed `whistleblower_registry.bin` to the Rust FFI so normal Basecamp launches do not rely on shell env vars. |
+| `src/WhistleblowerBackend.{h,cpp}` | ✅ **Real LogosAPI integration** — uses `m_api->getClient()` → `requestObject()` → `onEvent()` for the required Storage module and optional Delivery module. Calls `invokeRemoteMethodAsync` for `uploadUrl` and, when `WHISTLEBLOWER_ENABLE_DELIVERY=1`, `send`. Single-flight callbacks with safety timeouts. Anchor calls pass the bundled deployed `whistleblower_registry.bin` to the Rust FFI so normal Basecamp launches do not rely on shell env vars. |
 | `src/main.cpp` | ✅ Standalone preview app for manual UI iteration without Basecamp |
 | `CMakeLists.txt` (workspace root: `../`) | ✅ Builds Qt plugin + preview app, links Rust FFI cdylib + liblogos_sdk.a, finds Qt6 RemoteObjects |
 | `../flake.nix` | ✅ **Workspace-root flake builds the full chain.** `.#ffi`, `.#plugin`, `.#lgx`, `.#install` all work. Built `dist/whistleblower-plugin.lgx` (2.4MB) end-to-end on m4pro. |
@@ -21,8 +22,8 @@ envelope over Logos Delivery, and anchor the CID on the LEZ registry.
 
 1. ✅ ~~Wire `uploadToStorage()` and `broadcastEnvelope()`~~ — DONE.
    Backend uses `LogosAPIClient::invokeRemoteMethodAsync` for
-   `uploadUrl` / `send` and subscribes via `onEvent` for the
-   completion signals.
+   `uploadUrl` and, when `WHISTLEBLOWER_ENABLE_DELIVERY=1`, `send`.
+   It subscribes via `onEvent` for the completion signals.
 
 2. ✅ ~~Recompute the FFI cargo-lock hashes~~ — DONE.
    `logos-blockchain-blend-crypto-0.1.2` updated to match our pinned
@@ -45,12 +46,12 @@ envelope over Logos Delivery, and anchor the CID on the LEZ registry.
 
 5. ✅ ~~Test the .lgx in a real Basecamp instance.~~ — DONE (2026-05-09).
    `lgs basecamp install` + `lgs basecamp launch alice` loads the plugin,
-   storage_module accepts the upload (manifest CID returned), delivery_module
-   broadcasts the CID JSON envelope on `/lp0017-whistleblower/1/cids/json`,
-   and the UI reflects the green "Uploaded — CID …" + "Working: broadcasting
-   to Logos Delivery…" states.
+   storage_module accepts the upload (manifest CID returned), and the UI
+   reaches the ready-to-anchor state. Delivery broadcast can be enabled with
+   `WHISTLEBLOWER_ENABLE_DELIVERY=1`; it is not required for the upload +
+   anchor demo path.
 
-   **One-time fix required:** the upstream `logos-co/logos-delivery-module#lgx`
+   **One-time fix when enabling Delivery:** the upstream `logos-co/logos-delivery-module#lgx`
    flake omits `librln.dylib` from its install output and bakes a Nix
    sandbox path into `liblogosdelivery.dylib`'s load command. Run
    `scripts/fix_delivery_rln.sh` after every `lgs basecamp launch <profile>`
@@ -102,8 +103,8 @@ QML_PATH=$PWD/qml ./build/bin/whistleblower_app
 ```
 
 The standalone app lets you exercise the QML + Backend signal flow without
-a Basecamp host. The Storage/Delivery integration will fail-fast with a
-clear error since `LogosAPI` is null in standalone mode.
+a Basecamp host. The Storage integration and optional Delivery integration will
+fail-fast with a clear error since `LogosAPI` is null in standalone mode.
 
 ## Build (nix, production)
 
