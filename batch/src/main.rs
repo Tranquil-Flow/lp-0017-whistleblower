@@ -70,7 +70,7 @@ struct Cli {
     /// deployed on chain). PDAs are derived from the program id, and a docker
     /// `cargo risczero build` and the in-process `embed_methods` build can
     /// produce different ImageIDs — so to anchor against the public-testnet
-    /// program (`54c7f793…`) you MUST point here at the deployed `.bin`
+    /// program (`1c8a08b6…`) you MUST point here at the deployed `.bin`
     /// (`target/riscv32im-risc0-zkvm-elf/docker/whistleblower_registry.bin`).
     /// If omitted, the embedded ELF is used (correct only when the embedded
     /// build is what was deployed, e.g. some localnet flows).

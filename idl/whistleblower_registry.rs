@@ -3,7 +3,7 @@
 //! This file is the source for `spel generate-idl` and is **never compiled**:
 //! it is not a crate, not a workspace member, and not a `[[bin]]`. The
 //! production guest at `methods/guest/src/bin/whistleblower_registry.rs` stays
-//! raw `nssa_core` (it is the deployed ELF, ImageID `54c7f793…aa91`).
+//! raw `nssa_core` (it is the deployed ELF, ImageID `1c8a08b6…08f7`).
 //!
 //! `spel generate-idl` AST-parses this file (it does not compile it — see
 //! `spel-framework-core/src/idl_gen.rs`), so depending on `spel-framework`

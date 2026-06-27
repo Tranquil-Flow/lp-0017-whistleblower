@@ -17,7 +17,7 @@ In this terminal evidence recording, I am using the read-only public-testnet ver
 
 No faucet, signing, local state, localnet, or new transaction is required for this path. It is a re-verification of already confirmed public-testnet evidence.
 
-The program being checked is `54c7f793caa540408ce2ca4c22051d78c466cd5ed8db607feedd19dcb749aa91` on `https://testnet.lez.logos.co/`.
+The program being checked is `1c8a08b62f1cf7b4a92693502bb5522372d937cfe9aa5a60a98a3dac6b5908f7` on `https://testnet.lez.logos.co/`.
 
 ## Section 1 — Sequencer reachable; current block id
 

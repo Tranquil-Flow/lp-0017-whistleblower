@@ -51,7 +51,7 @@ idl["provenance"] = {
     "generation": "spel generate-idl (spel %s)" % os.environ.get("SPEL_VERSION", "0.2.0"),
     "source": os.environ.get("DEF", "idl/whistleblower_registry.rs"),
     "regenerate": "bash scripts/regen-idl.sh",
-    "deployed_program_id": "54c7f793caa540408ce2ca4c22051d78c466cd5ed8db607feedd19dcb749aa91",
+    "deployed_program_id": "1c8a08b62f1cf7b4a92693502bb5522372d937cfe9aa5a60a98a3dac6b5908f7",
     "note": "instructions + accounts are emitted verbatim by `spel generate-idl`, which "
             "AST-parses idl/whistleblower_registry.rs (it never compiles it). The constants, "
             "metadata, and provenance blocks are appended by scripts/regen-idl.sh. The "

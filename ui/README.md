@@ -79,7 +79,7 @@ the LEZ registry.
    ```
 
 6. ✅ ~~Public-testnet deployment~~ — DONE. Deployed + exercised on the
-   public LEZ testnet (`testnet.lez.logos.co`), program `54c7f793…aa91`,
+   public LEZ testnet (`testnet.lez.logos.co`), program `1c8a08b6…08f7`,
    `RISC0_DEV_MODE=0` (public-tx proving is sequencer-side). Hashes + decodes
    in `TESTNET_PROOF.md`; re-verify `bash scripts/verify-testnet.sh`. CU is
    reported as deterministic deployed-ELF cycles (testnet hides per-tx CU);
@@ -116,7 +116,7 @@ ssh m4pro                                   # or any host with nix + Logos toolc
 git clone <this-repo> wb && cd wb           # workspace root
 nix build .#ffi      # Rust cdylib (~3-4 min)
 nix build .#plugin   # Qt plugin + standalone preview app
-nix build .#lgx      # portable .lgx package — the spec deliverable
+nix build .#lgx-portable # evaluator-loadable portable .lgx package — the spec deliverable
 nix run  .#install   # copies plugin into Basecamp dev plugin dir
 ```
 

@@ -30,7 +30,7 @@ LIBRLN_SRC="$(printf '%s\n' "$LIBRLN_CANDIDATES" | awk 'index($0, "/zerokit-") &
 [[ -n "$LIBRLN_SRC" ]] || LIBRLN_SRC="$(printf '%s\n' "$LIBRLN_CANDIDATES" | awk 'NF { print; exit }')"
 if [[ -z "$LIBRLN_SRC" ]]; then
     echo "fix_delivery_rln: ERROR — could not find zerokit librln.dylib in /nix/store." >&2
-    echo "  Try: nix build .#lgx (or whatever pulls zerokit into the store)." >&2
+    echo "  Try: nix build .#lgx-portable (or .#lgx for local dev; either pulls zerokit into the store)." >&2
     exit 1
 fi
 echo "fix_delivery_rln: source librln = $LIBRLN_SRC"

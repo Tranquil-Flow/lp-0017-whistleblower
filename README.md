@@ -4,7 +4,7 @@ LP-0017 reference implementation: a censorship-resistant document upload + index
 
 Anyone can upload a document → its CID is broadcast over Logos Delivery → any altruistic third party (or the publisher themselves) can later batch-anchor accumulated CIDs to a LEZ program. The on-chain registry stores `(CID, metadata_hash, anchor_timestamp)` per document and is queryable by CID hash without a transaction.
 
-> **Status:** the registry program is **deployed and exercised on the public LEZ testnet** (`testnet.lez.logos.co`, real consensus, `RISC0_DEV_MODE=0`, 2026-06-03) — program `54c7f793…aa91`; deploy + `anchor_one` + idempotent re-anchor + `anchor_batch` all confirm on chain (`wallet chain-info` → `Some(ProgramDeployment)`/`Some(Public)`), and both entry PDAs decode to the expected `AnchorEntry`. Full hashes, decodes, and reproduction are in [`TESTNET_PROOF.md`](TESTNET_PROOF.md); re-verify live with `bash scripts/verify-testnet.sh`. The repository also includes the reusable indexing module, LEZ adapter, permissionless batch-anchor CLI, SPEL IDL, and a Qt6/QML Basecamp UI plugin packaged into a portable `.lgx` via nix and smoke-tested in real Basecamp on 2026-05-09. Earlier local-sequencer runs (`REGISTRY_SPIKE.md`, `BENCHMARKS.md`) provide compute and development traces; public testnet verification is the primary deployment evidence. Repo: `https://github.com/Tranquil-Flow/lp-0017-whistleblower`.
+> **Status:** the registry program is **deployed and exercised on the public LEZ testnet** (`testnet.lez.logos.co`, real consensus, `RISC0_DEV_MODE=0`, 2026-06-27 refresh) — program `1c8a08b6…08f7`; deploy + `anchor_one` + idempotent re-anchor + `anchor_batch` all confirm on chain (`wallet chain-info` → `Some(ProgramDeployment)`/`Some(Public)`), and both entry PDAs decode to the expected `AnchorEntry`. Fresh v0.2.0 hashes, decodes, and reproduction notes are in [`TESTNET_PROOF.md`](TESTNET_PROOF.md); re-verify live with `bash scripts/ci-verify-testnet.sh` or `bash scripts/verify-testnet.sh`. The repository also includes the reusable indexing module, LEZ adapter, permissionless batch-anchor CLI, SPEL IDL, and a Qt6/QML Basecamp UI plugin packaged into a portable `.lgx` via nix and smoke-tested in real Basecamp on 2026-05-09. Earlier local-sequencer runs (`REGISTRY_SPIKE.md`, `BENCHMARKS.md`) provide compute and development traces; public testnet verification is the primary deployment evidence. Repo: `https://github.com/Tranquil-Flow/lp-0017-whistleblower`.
 
 ## Repository layout
 
@@ -31,8 +31,8 @@ whistleblower/
 ├── batch/                    # `whistleblower-batch` CLI binary (permissionless batch anchor tool)
 ├── ui/                       # Qt6/QML Basecamp plugin (manifest + qml + src + ffi cdylib)
 ├── anchor_spike/             # standalone runner that proves Task 1.0B end-to-end
-├── flake.nix                 # workspace-root nix flake (.#ffi / .#plugin / .#lgx / .#install)
-├── dist/                     # built .lgx package (after `nix build .#lgx`)
+├── flake.nix                 # workspace-root nix flake (.#ffi / .#plugin / .#lgx-portable / .#install)
+├── dist/                     # built evaluator-loadable .lgx package (after `nix build .#lgx-portable`)
 ├── whistleblower-registry.idl.json   # SPEL-generated IDL (spel generate-idl; regen via scripts/regen-idl.sh)
 ├── idl/whistleblower_registry.rs      # parse-only #[lez_program] mirror spel generate-idl reads (never compiled)
 ├── TESTNET_PROOF.md          # PRIMARY EVIDENCE — public-testnet deploy + lifecycle, hashes, decodes
@@ -54,15 +54,15 @@ The fastest way to confirm the deployed registry is real. Re-verifies the full d
 # Curl-only (no toolchain): confirms every deployed tx is live on the public sequencer.
 bash scripts/demo.sh           # or: bash scripts/ci-verify-testnet.sh
 
-# Richer check (decodes the entry PDAs) — needs the `wallet` binary (LEZ tag v0.1.2):
+# Richer check (decodes the entry PDAs) — needs the `wallet` binary (current LEZ v0.2.0):
 bash scripts/verify-testnet.sh
 ```
 
-Program `54c7f793…aa91` on `https://testnet.lez.logos.co/` — full hashes + decodes in [`TESTNET_PROOF.md`](TESTNET_PROOF.md). To run a fresh deploy + lifecycle or the real batch tool against the testnet, see `scripts/demo.sh --full` / `--batch` (needs a funded testnet wallet).
+Program `1c8a08b6…08f7` on `https://testnet.lez.logos.co/` — full hashes + decodes in [`TESTNET_PROOF.md`](TESTNET_PROOF.md). To run a fresh deploy + lifecycle or the real batch tool against the testnet, see `scripts/demo.sh --full` / `--batch` (needs a funded testnet wallet).
 
 ## Quick start (local sequencer)
 
-You need: macOS arm64 with `cargo`, `docker`, and the Logos toolchain. Install order matters — `logos-blockchain-circuits` is a build-time dependency of `spel`, so install it first. Verified versions: `lgs 0.1.1`, `spel 0.2.0`, `cargo-risczero 3.0.5`, `r0vm 3.0.5`, `rzup 0.5.1`, `logos-blockchain-circuits v0.4.2`. (For the public testnet, build the `wallet` from LEZ tag `v0.1.2` — see [`TESTNET_PROOF.md`](TESTNET_PROOF.md).)
+You need: macOS arm64 with `cargo`, `docker`, and the Logos toolchain. Install order matters — `logos-blockchain-circuits` is a build-time dependency of `spel`, so install it first. Verified versions: `lgs 0.1.1`, `spel 0.2.0`, `cargo-risczero 3.0.5`, `r0vm 3.0.5`, `rzup 0.5.1`, `logos-blockchain-circuits v0.4.2`. (For the current public testnet, build the `wallet` from the LEZ v0.2.0 source tree — see [`TESTNET_PROOF.md`](TESTNET_PROOF.md).)
 
 ```bash
 # 1. Bring up a local LEZ sequencer (~3 min on warm cache).
@@ -111,13 +111,13 @@ The plugin is a Qt6/QML widget that loads inside Basecamp, exposes the file pick
 ```bash
 nix build .#ffi      # Rust cdylib (~3-4 min)
 nix build .#plugin   # Qt6 plugin + standalone preview app
-nix build .#lgx      # portable .lgx package — the spec deliverable
+nix build .#lgx-portable # evaluator-loadable portable .lgx package — the spec deliverable
 nix run  .#install   # copies plugin into Basecamp dev plugin dir
 lgs basecamp install # evaluator path: installs storage_module + whistleblower; delivery_module may also be present as an optional module
 scripts/fix_delivery_rln.sh # optional workaround when enabling delivery_module on affected macOS installs
 ```
 
-The `.lgx` file is the spec deliverable. Verified end-to-end on m4pro (aarch64-darwin) on 2026-05-04: `dist/whistleblower-plugin.lgx` (2.4MB). See [`ui/README.md`](ui/README.md) for the manual `cmake -B build` development workflow.
+The `.#lgx-portable` `.lgx` file is the evaluator-loadable spec deliverable; `.#lgx` is retained as a local-dev variant. Verified end-to-end on m4pro (aarch64-darwin) on 2026-05-04: `dist/whistleblower-plugin.lgx` (2.4MB). See [`ui/README.md`](ui/README.md) for the manual `cmake -B build` development workflow.
 
 ## Use the batch anchor CLI
 
@@ -150,7 +150,7 @@ Each anchored CID lives in its own PDA derived from `(program_id, sha256("lp0017
 python3 - <<'PY'
 import base58, hashlib, sys
 from hashlib import sha256
-program_id = bytes.fromhex("54c7f793caa540408ce2ca4c22051d78c466cd5ed8db607feedd19dcb749aa91")
+program_id = bytes.fromhex("1c8a08b62f1cf7b4a92693502bb5522372d937cfe9aa5a60a98a3dac6b5908f7")
 cid = (sys.argv[1] if len(sys.argv) > 1 else "bafybeigdyrzt3qgq2gqexamplelp0017cid00000000000000000000000000").encode()
 seed = sha256(b"lp0017:cid:v1\0" + cid).digest()
 print(base58.b58encode(hashlib.sha256(program_id + seed).digest()).decode())
@@ -165,7 +165,7 @@ Returns the JSON-decoded `AnchorEntry { cid, cid_hash, metadata_hash, anchor_tim
 The locked design decisions (`REGISTRY_SPIKE.md` has the on-chain spike detail):
 
 - **PDA-per-CID** registry storage (not single-root-PDA) — O(1) anchor cost, unbounded capacity, idempotency-by-default-state-check.
-- **Raw `nssa_core` guest** (not SPEL macros) — the deployed guest ELF (`54c7f793…aa91`) is hand-rolled `nssa_core` for a lean cross-compile. The IDL is still **machine-generated via `spel generate-idl`** from a parse-only `#[lez_program]` mirror at `idl/whistleblower_registry.rs` that is never compiled (regen: `bash scripts/regen-idl.sh`). `spel generate-idl` only AST-parses its input, so this pulls nothing into the guest build — the earlier "spel-framework forces bonsai-sdk into the riscv32im build" claim was wrong (it's a `k256` host feature, off by default, with no bonsai dep anywhere in LEZ). One documented gap: SPEL's seed model (`const|account|arg`) can't express our `sha256(domain‖cid)` PDA seed — filed upstream (see [`BUGS_FILED.md`](BUGS_FILED.md)).
+- **Raw `nssa_core` guest** (not SPEL macros) — the deployed guest ELF (`1c8a08b6…08f7`) is hand-rolled `nssa_core` for a lean cross-compile. The IDL is still **machine-generated via `spel generate-idl`** from a parse-only `#[lez_program]` mirror at `idl/whistleblower_registry.rs` that is never compiled (regen: `bash scripts/regen-idl.sh`). `spel generate-idl` only AST-parses its input, so this pulls nothing into the guest build — the earlier "spel-framework forces bonsai-sdk into the riscv32im build" claim was wrong (it's a `k256` host feature, off by default, with no bonsai dep anywhere in LEZ). One documented gap: SPEL's seed model (`const|account|arg`) can't express our `sha256(domain‖cid)` PDA seed — filed upstream (see [`BUGS_FILED.md`](BUGS_FILED.md)).
 - **Adapter-based reusable indexing module** — Qt-free Rust core, `Arc<dyn StorageClient + DeliveryClient + RegistryClient>` boundary. Real LEZ registry adapter + a real headless file-replay `DeliveryClient` (`--envelopes-from`) in tree; the UI plugin supplies real Storage and an opt-in Delivery send path via in-process `LogosAPIClient`. A headless live Waku Delivery client (Waku + RLN over QtRemoteObjects) is a documented separate integration — see [`adapters/logos/README.md`](adapters/logos/README.md).
 - **Wallet-free upload + envelope creation** — only on-chain anchoring needs a wallet, satisfying spec line 17 ("without identifying the uploader"). Delivery broadcast is available as an opt-in best-effort step when the host Delivery module is enabled.
 - **Topic** = `/lp0017-whistleblower/1/cids/json` (LIP-23 shape). Constant in `whistleblower-core`.
@@ -186,8 +186,8 @@ The locked design decisions (`REGISTRY_SPIKE.md` has the on-chain spike detail):
 | Reliability | Upload retries with backoff | `Publisher` wraps every adapter call in `with_retry` (5 retries, exponential) |
 | Reliability | Delivery dedup | `DurableDedupeStore` in `batch::run_batch_loop` (sled-backed) |
 | Reliability | Batch tool resumes from last successfully anchored | Persistent dedupe ledger; registry idempotency means safe re-runs |
-| Performance | CU benchmarks single + 50-CID batch | `BENCHMARKS.md` — per-tx CU is not exposed by the testnet RPC (no receipt method; filed upstream, [`BUGS_FILED.md`](BUGS_FILED.md) #7), so CU = executor cycles of the **deployed rc3 ELF** (`54c7f793…`), which the deterministic zkVM makes exactly equal to on-chain CU. Authoritative measured values: `anchor_one` = 100,185 user cycles; `anchor_batch(50)` = 4,506,872 user cycles (~90 K/CID). Testnet latency + payload/proof size captured live. |
-| Supportability | Deployed on LEZ testnet | **complete** — public testnet `testnet.lez.logos.co` (2026-06-03), program `54c7f793…aa91`, deploy + anchor lifecycle confirmed on chain; see [`TESTNET_PROOF.md`](TESTNET_PROOF.md), re-verify via `bash scripts/verify-testnet.sh` |
+| Performance | CU benchmarks single + 50-CID batch | `BENCHMARKS.md` — per-tx CU is not exposed by the testnet RPC (no receipt method; filed upstream, [`BUGS_FILED.md`](BUGS_FILED.md) #7), so CU = executor cycles of the **current deployed v0.2.0 ProgramBinary** (`1c8a08b6…`), which the deterministic zkVM makes exactly equal to on-chain CU. Authoritative measured values: `anchor_one` = 100,185 user cycles; `anchor_batch(50)` = 4,506,872 user cycles (~90 K/CID). Testnet latency + payload/proof size captured live. |
+| Supportability | Deployed on LEZ testnet | **complete** — public testnet `testnet.lez.logos.co` (2026-06-03), program `1c8a08b6…08f7`, deploy + anchor lifecycle confirmed on chain; see [`TESTNET_PROOF.md`](TESTNET_PROOF.md), re-verify via `bash scripts/verify-testnet.sh` |
 | Supportability | E2E integration tests in CI with `RISC0_DEV_MODE=0` | `.github/workflows/ci.yml` `verify-testnet` job runs on **every push** — re-queries the deployed program's transactions from the public sequencer (read-only, no secrets) and fails if any are missing. Replaces the old `workflow_dispatch`+`exit 1` stub that never ran. |
 
 ## License

@@ -46,16 +46,16 @@ The local sequencer runs `RISC0_DEV_MODE=true` by default — proofs are stubbed
 ```
 sequencer RPC:  https://testnet.lez.logos.co/   (public, no-auth, JSON-RPC over HTTPS POST)
 explorer:       https://explorer.testnet.lez.logos.co/
-program id:     54c7f793caa540408ce2ca4c22051d78c466cd5ed8db607feedd19dcb749aa91   (= ImageID)
-deploy tx:      05781c3c5fa65d72d1ee9ee8f0964144f9a5688ef8ad14f445581e308026608f   (Some(ProgramDeployment))
-anchor_one:     9f6aee9cc97a62300780f0e576e76c61c4e1fb32bef5067d574a798a1a0de227   (Some(Public))
-anchor_one dup: 8f2fe8f103a9c6a7a65547e9244db9ef4a1d3ef42caf8067288316f2d920dfbc   (idempotent no-op)
-anchor_batch:   f5fedf2910dad89c91a62ec257f7a722c638c07203fac914a9766cdfe148e22f   (Some(Public))
+program id:     1c8a08b62f1cf7b4a92693502bb5522372d937cfe9aa5a60a98a3dac6b5908f7   (= ImageID)
+deploy tx:      db634916b48628e8f40b42021858f7f6731360dc48f5baa37a04edcd75cc598c   (Some(ProgramDeployment))
+anchor_one:     4de6176a58dade3188737e88a9e59b9c922c403452bb2dbc6e8dc66d0b0f3a78   (Some(Public))
+anchor_one dup: 7114bce11b90a05c836a5d920da4a8fcb188395a7e9f470be006f66652ad0546   (idempotent no-op)
+anchor_batch:   05e7b3763d659ba9cbc1a3b2488edfd6e1d515a2f6468f5f34fcb976c7c70abf   (Some(Public))
 ```
 
 ### Version-pin landmine (must match for the binary to execute)
 
-The testnet runs LEZ **`v0.1.2` ≡ `v0.2.0-rc3`** (commit `cf3639d8`). The guest, adapter, and driver are pinned to rc3 (`nssa`/`nssa_core`/`common`/`wallet`/`sequencer_service_rpc` → `tag = v0.2.0-rc3`; `spel` → branch `chore/bump-lez-to-v0.2.0-rc3` = `31e52c52`, because spel's own `v0.2.0-rc.3` tag pins `nssa_core` back to rc1). `ruint` is pinned to `1.17.0` (the rc3 graph otherwise pulls `1.18.0`, which needs rustc 1.90 > the risc0 guest-builder's 1.88). Verify: `Cargo.lock` resolves `nssa_core` to `cf3639d8`, zero `35d8df0d`.
+The current public-testnet refresh was produced with the LEZ v0.2.0 client/runtime path. The guest, adapter, and driver are pinned to rc3 (`nssa`/`nssa_core`/`common`/`wallet`/`sequencer_service_rpc` → `tag = v0.2.0-rc3`; `spel` → branch `chore/bump-lez-to-v0.2.0-rc3` = `31e52c52`, because spel's own `v0.2.0-rc.3` tag pins `nssa_core` back to rc1). `ruint` is pinned to `1.17.0` (the rc3 graph otherwise pulls `1.18.0`, which needs rustc 1.90 > the risc0 guest-builder's 1.88). Verify: `Cargo.lock` resolves `nssa_core` to `cf3639d8`, zero `35d8df0d`.
 
 ### Reproduce the deploy + lifecycle (fresh)
 
@@ -64,7 +64,7 @@ The testnet runs LEZ **`v0.1.2` ≡ `v0.2.0-rc3`** (commit `cf3639d8`). The gues
 ```bash
 # 1. Build the rc3 guest (heavy risc0 build — route to a build host):
 cargo risczero build --manifest-path methods/guest/Cargo.toml
-#    -> target/riscv32im-risc0-zkvm-elf/docker/whistleblower_registry.bin (ImageID 54c7f793…)
+#    -> a release RISC-V guest wrapped as a RISC Zero ProgramBinary (ImageID 1c8a08b6…)
 
 # 2. Fund an initialised testnet account (one-time):
 wallet config set sequencer_addr https://testnet.lez.logos.co/

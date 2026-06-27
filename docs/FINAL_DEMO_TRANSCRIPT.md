@@ -6,7 +6,7 @@ Read this while running `bash scripts/record-final-video.sh`.
 
 This is the final LP-0017 whistleblower resubmission demo. I am showing public LEZ testnet evidence for disclosure anchors, duplicate handling, and batch anchoring.
 
-The public program and image ID is `54c7f793caa540408ce2ca4c22051d78c466cd5ed8db607feedd19dcb749aa91`.
+The public program and image ID is `1c8a08b62f1cf7b4a92693502bb5522372d937cfe9aa5a60a98a3dac6b5908f7`.
 
 ## Evidence documents
 

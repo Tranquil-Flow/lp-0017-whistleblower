@@ -41,7 +41,7 @@ done
 
 # Deployed public-testnet program (see TESTNET_PROOF.md).
 TESTNET_SEQ="https://testnet.lez.logos.co/"
-PROGRAM_ID="54c7f793caa540408ce2ca4c22051d78c466cd5ed8db607feedd19dcb749aa91"
+PROGRAM_ID="1c8a08b62f1cf7b4a92693502bb5522372d937cfe9aa5a60a98a3dac6b5908f7"
 DEPLOYED_BIN="target/riscv32im-risc0-zkvm-elf/docker/whistleblower_registry.bin"
 ENVELOPES="demo/sample-envelopes.jsonl"
 TOPIC="/lp0017-whistleblower/1/cids/json"
@@ -62,7 +62,7 @@ do_verify() {
         bash scripts/verify-testnet.sh
     else
         echo "[demo] wallet binary not on PATH — running curl-only re-verification"
-        echo "       (build the wallet from LEZ tag v0.1.2 for the PDA-decoding check)"
+        echo "       (build the wallet from current LEZ v0.2.0 for the PDA-decoding check)"
         bash scripts/ci-verify-testnet.sh
     fi
     echo

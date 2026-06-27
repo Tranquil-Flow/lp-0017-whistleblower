@@ -2,7 +2,7 @@
 
 The submission video is a narrated walkthrough of the LP-0017 document publishing and indexing flow. This file is the human recording script; `scripts/record-final-video.sh` is the terminal companion script.
 
-> **Testnet-first.** The registry is deployed on the **public LEZ testnet** (`testnet.lez.logos.co`, program `54c7f793…aa91`). The recording leads with live testnet evidence. Local-sequencer artifacts are used only for compute/proof development traces where the public testnet does not expose per-transaction executor logs.
+> **Testnet-first.** The registry is deployed on the **public LEZ testnet** (`testnet.lez.logos.co`, program `1c8a08b6…08f7`). The recording leads with live testnet evidence. Local-sequencer artifacts are used only for compute/proof development traces where the public testnet does not expose per-transaction executor logs.
 
 ## What the spec requires the video to show
 
@@ -128,7 +128,7 @@ Narrate: "the public testnet does not persist a per-tx compute-unit value, so CU
 ### Scene 6 — Wrap (~15s)
 
 - "All code is at github.com/Tranquil-Flow/lp-0017-whistleblower under MIT/Apache-2.0."
-- "The registry is deployed on the public LEZ testnet — program `54c7f793…`, explorer at explorer.testnet.lez.logos.co."
+- "The registry is deployed on the public LEZ testnet — program `1c8a08b6…`, explorer at explorer.testnet.lez.logos.co."
 - "Upstream issues we filed/queued during the build: see `BUGS_FILED.md`."
 
 Total run time target: 3–4 minutes.

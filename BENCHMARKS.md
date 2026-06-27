@@ -4,9 +4,9 @@ Spec line 58: "Document and measure the compute unit (CU) cost of a single-CID a
 
 > **Note (2026-06-04):** the program is **deployed on the public LEZ testnet** (`testnet.lez.logos.co`) — see [`TESTNET_PROOF.md`](TESTNET_PROOF.md).
 >
-> **How CU is measured, and why it is the testnet figure.** The public testnet does not expose a per-transaction compute-unit value: the RISC0 executor computes cycle counts in `SessionInfo`, but `nssa/src/program.rs` consumes only `session_info.journal` and discards the cycles; no tx/block/receipt struct carries a cost field, and there is no `getTransactionReceipt` RPC (filed upstream — [`BUGS_FILED.md`](BUGS_FILED.md) #7). The RISC0 zkVM is **deterministic**, so the compute units consumed by a transaction depend only on `(program ELF, input)` — running the **deployed ELF** (`ImageID 54c7f793…aa91`) in the executor yields the *exact* cycle count it consumes on the testnet. CU below is therefore the executor cost of the deployed program, not a separate localnet program. The testnet runs the identical program families (`getProgramIds`), and anchor txs use the public path (sequencer-side execution), so this equivalence is exact for this tx class.
+> **How CU is measured, and why it is the testnet figure.** The public testnet does not expose a per-transaction compute-unit value: the RISC0 executor computes cycle counts in `SessionInfo`, but `nssa/src/program.rs` consumes only `session_info.journal` and discards the cycles; no tx/block/receipt struct carries a cost field, and there is no `getTransactionReceipt` RPC (filed upstream — [`BUGS_FILED.md`](BUGS_FILED.md) #7). The RISC0 zkVM is **deterministic**, so the compute units consumed by a transaction depend only on `(program ELF, input)` — running the **deployed ELF** (`ImageID 1c8a08b6…08f7`) in the executor yields the *exact* cycle count it consumes on the testnet. CU below is therefore the executor cost of the deployed program, not a separate localnet program. The testnet runs the identical program families (`getProgramIds`), and anchor txs use the public path (sequencer-side execution), so this equivalence is exact for this tx class.
 >
-> ✅ **rc3 CU measured (2026-06-05).** The authoritative, deterministic CU of the **deployed rc3 ELF** (`ImageID 54c7f793…`) is in the **"Deterministic CU of the deployed rc3 ELF"** table below: `anchor_one` = **100,185** user cycles, `anchor_batch(50)` = **4,506,872** (~90 K/CID). These are produced by running the deployed guest through the same RISC0 executor the sequencer uses (`cargo run -p anchor-spike --bin measure_cu_cycles`, no proving, no network), so any reviewer reproduces the exact integers. The localnet executor-*time* table immediately below (rc1 guest, captured 2026-05-04/05) is retained only as wall-clock corroboration of the same per-CID shape.
+> ✅ **rc3 CU measured (2026-06-05).** The authoritative, deterministic CU of the **current deployed v0.2.0 ProgramBinary** (`ImageID 1c8a08b6…`) is in the **"Deterministic CU of the current deployed v0.2.0 ProgramBinary"** table below: `anchor_one` = **100,185** user cycles, `anchor_batch(50)` = **4,506,872** (~90 K/CID). These are produced by running the deployed guest through the same RISC0 executor the sequencer uses (`cargo run -p anchor-spike --bin measure_cu_cycles`, no proving, no network), so any reviewer reproduces the exact integers. The localnet executor-*time* table immediately below (rc1 guest, captured 2026-05-04/05) is retained only as wall-clock corroboration of the same per-CID shape.
 
 ## Methodology
 
@@ -75,7 +75,7 @@ Wall-clock latency (5-15s) is dominated by **block creation interval** (`block_c
 
 ### Public LEZ testnet (`testnet.lez.logos.co`) — deployed; CU via deterministic deployed-ELF execution
 
-The earlier "devnet pending credentials" note is **obsolete**: a public, no-auth LEZ testnet now exists and the registry is deployed on it (program `54c7f793…aa91`; deploy + anchor lifecycle confirmed on chain — [`TESTNET_PROOF.md`](TESTNET_PROOF.md)).
+The earlier "devnet pending credentials" note is **obsolete**: a public, no-auth LEZ testnet now exists and the registry is deployed on it (program `1c8a08b6…08f7`; deploy + anchor lifecycle confirmed on chain — [`TESTNET_PROOF.md`](TESTNET_PROOF.md)).
 
 **Testnet-measurable performance (captured live).** What the public testnet *does* expose, measured directly against it:
 - **Inclusion latency** — anchor txs confirm within seconds-to-minutes (the wallet's ~45s confirmation poll sometimes lapses before inclusion; all four lifecycle txs landed — see `TESTNET_PROOF.md`). Dominated by block cadence, not program compute.
@@ -83,7 +83,7 @@ The earlier "devnet pending credentials" note is **obsolete**: a public, no-auth
 
 **Per-transaction CU — not exposed by the testnet.** As explained at the top of this file, the testnet never persists a per-tx CU value (BUGS_FILED #7). CU is therefore obtained by executing the **deployed ELF** in the RISC0 executor — deterministic, so equal to on-chain CU.
 
-### Deterministic CU of the deployed rc3 ELF (`ImageID 54c7f793…`) — authoritative
+### Deterministic CU of the current deployed v0.2.0 ProgramBinary (`ImageID 1c8a08b6…`) — authoritative
 
 Measured 2026-06-05 by running the **deployed rc3 guest** through the same RISC0
 executor the sequencer uses for public transactions (`anchor_spike::measure_cu_cycles`
@@ -107,7 +107,7 @@ Per-CID cost is **essentially constant (~90 K cycles)** once the fixed per-tx ov
 **Reproduce (read-only, deterministic — any reviewer gets identical integers):**
 
 ```bash
-# Build the deployed guest reproducibly (Docker-pinned) -> ImageID 54c7f793…
+# Build the deployed guest reproducibly (Docker-pinned) -> ImageID 1c8a08b6…
 cargo risczero build --manifest-path methods/guest/Cargo.toml
 # Run the deployed ELF through the sequencer's executor and print user cycles:
 cargo run --release -p anchor-spike --bin measure_cu_cycles -- \
